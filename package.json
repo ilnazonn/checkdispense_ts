@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "checkdispensebot",
   "main": "dist/check_dispense.js",
+  "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "node dist/check_dispense.js",
