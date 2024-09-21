@@ -25,10 +25,18 @@ const config: Config = {
     PASSWORD: process.env.PASSWORD!,
     BASE_URL: process.env.BASE_URL!,
     TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID!
+
 };
 
 // Логирование токена для проверки
 console.log('TELEGRAM_TOKEN:', config.TELEGRAM_TOKEN);
+console.log('TELEGRAM_TOKEN:', config.CLIENT_ID);
+console.log('TELEGRAM_TOKEN:', config.CLIENT_SECRET);
+console.log('TELEGRAM_TOKEN:', config.USERNME);
+console.log('TELEGRAM_TOKEN:', config.PASSWORD);
+console.log('TELEGRAM_TOKEN:', config.BASE_URL);
+console.log('TELEGRAM_TOKEN:', config.TELEGRAM_CHAT_ID);
+console.log('TELEGRAM_TOKEN:', config.BASE_URL);
 
 // Создание экземпляра бота
 const bot = new TelegramBot(config.TELEGRAM_TOKEN, { polling: true });
@@ -37,7 +45,7 @@ const bot = new TelegramBot(config.TELEGRAM_TOKEN, { polling: true });
 // Функция для получения авторизационного токена
 async function getAuthToken(): Promise<string> {
   try {
-    const response = await axios.post(`${process.env.BASE_URL}/auth/`, {
+    const response = await axios.post(`https://api.telemetron.net/auth/`, {
       grant_type: 'password',
       client_id: process.env.CLIENT_ID,
       client_secret: process.env.CLIENT_SECRET,
@@ -60,7 +68,7 @@ async function getAuthToken(): Promise<string> {
 // Функция для получения статуса аппарата
 async function getMachineStatus(): Promise<string> {
   try {
-    const response = await axios.get(`${process.env.BASE_URL}/v2/vending_machines/${process.env.VM_ID}`, {
+    const response = await axios.get(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}`, {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${await getAuthToken()}`
@@ -106,7 +114,7 @@ bot.onText(/\/check/, async (msg) => {
     const token = await getAuthToken();
     const status = await getMachineStatus();
 
-    const response = await axios.post(`${process.env.BASE_URL}/v2/vending_machines/${process.env.VM_ID}/dispense`, {
+    const response = await axios.post(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
       number: "106",
       cup: "0",
       sugar: "0",
@@ -210,7 +218,7 @@ async function sendRequest(): Promise<Response | void> {
   try {
     const token = await getAuthToken();
 
-    return await fetch(`${process.env.BASE_URL}/v2/vending_machines/${process.env.VM_ID}/dispense`, {
+    return await fetch(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -223,16 +231,28 @@ async function sendRequest(): Promise<Response | void> {
         discount: "0"
       })
     });
-  } catch (error: any) {
-    console.error(`Ошибка выполнения запроса: ${error.message}`);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`Ошибка выполнения запроса: ${error.message}`);
+    } else {
+      console.error(`Неизвестная ошибка: ${error}`);
+    }
   }
 }
 
-
-
 // Обработка ответа
 async function handleResponse(response: Response): Promise<void> {
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error(`Ошибка при обработке ответа: ${error.message}`);
+    } else {
+      console.error(`Неизвестная ошибка: ${error}`);
+    }
+    return; // Если произошла ошибка, выходим из функции
+  }
 
   // Отправка уведомления в Telegram, если статус не равен 200
   if (response.status !== 200) {
@@ -267,5 +287,6 @@ startInterval();
 bot.on('polling_error', (error) => {
   console.log(error);  // Вывод ошибок
 });
+
 
 
