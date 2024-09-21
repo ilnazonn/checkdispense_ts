@@ -30,13 +30,12 @@ const config: Config = {
 
 // Логирование токена для проверки
 console.log('TELEGRAM_TOKEN:', config.TELEGRAM_TOKEN);
-console.log('TELEGRAM_TOKEN:', config.CLIENT_ID);
-console.log('TELEGRAM_TOKEN:', config.CLIENT_SECRET);
-console.log('TELEGRAM_TOKEN:', config.USERNME);
-console.log('TELEGRAM_TOKEN:', config.PASSWORD);
-console.log('TELEGRAM_TOKEN:', config.BASE_URL);
-console.log('TELEGRAM_TOKEN:', config.TELEGRAM_CHAT_ID);
-console.log('TELEGRAM_TOKEN:', config.BASE_URL);
+console.log('clientid:', config.CLIENT_ID);
+console.log('clientsecret:', config.CLIENT_SECRET);
+console.log('username:', config.USERNME);
+console.log('password:', config.PASSWORD);
+console.log('base_url:', config.BASE_URL);
+console.log('TELEGRAM_chat_id:', config.TELEGRAM_CHAT_ID);
 
 // Создание экземпляра бота
 const bot = new TelegramBot(config.TELEGRAM_TOKEN, { polling: true });
