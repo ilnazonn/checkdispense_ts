@@ -1,7 +1,10 @@
 import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
+import { AxiosError } from 'axios';
 import dotenv from 'dotenv';
-
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 // Загрузить переменные окружения из файла .env
 dotenv.config();
 
@@ -108,53 +111,84 @@ bot.onText(/\/start/, (msg) => {
 // Обработчик для команды /check
 bot.onText(/\/check/, async (msg) => {
   const chatId = msg.chat.id;
+  let status: string = 'Неизвестный статус';
+  let responseTime: number;
+  let startTime: number = 0; // Инициализируем переменную значением 0
 
   try {
+    status = await getMachineStatus();
     const token = await getAuthToken();
-    const status = await getMachineStatus();
 
-    const response = await axios.post(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
-      number: "106",
-      cup: "0",
-      sugar: "0",
-      discount: "0"
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    startTime = performance.now(); // Начинаем отсчет времени перед отправкой запроса
 
-    const markdownResponse = `
+    const response = await axios.post(
+        `https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`,
+        {
+          number: "1",
+          cup: "0",
+          sugar: "0",
+          discount: "0"
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        }
+    );
+
+    const endTime = performance.now(); // Время после получения ответа
+    responseTime = endTime - startTime; // Рассчитываем время отклика
+
+
+    await sendResponse(chatId, status, response, responseTime);
+  } catch (error) {
+    const unknownError = error as AxiosError;
+
+    // Если произошла ошибка, запоминаем время и обновляем ответ
+    const endTime = performance.now(); // Обновляем время отклика
+    responseTime = endTime - startTime; // Рассчитываем время отклика
+
+    console.error('Ошибка при выполнении запроса:', unknownError.message);
+    console.error('Статус аппарата перед ошибкой:', status);
+
+    await handleError(chatId, unknownError, status, responseTime);
+  }
+});
+
+
+async function sendResponse(chatId: number, status: string, response: any, responseTime: number) {
+  const markdownResponse = `
 *Статус аппарата*: \`${status}\`
 *Статус код*: \`${response.status}\`
+*Время ответа API*: \`${responseTime.toFixed(2)} мс\`
 *Ответ от API*:
 \`\`\`json
 ${JSON.stringify(response.data, null, 2)}
 \`\`\`
-    `;
+  `;
+  await bot.sendMessage(chatId, markdownResponse, { parse_mode: 'Markdown' });
+}
 
-    await bot.sendMessage(chatId, markdownResponse, { parse_mode: 'Markdown' });
-  } catch (error: any) {
-    const status = await getMachineStatus();
-    if (error.response) {
-      const markdownErrorResponse = `
+async function handleError(chatId: number, error: AxiosError, status: string, responseTime: number) {
+  let errorMessage = `Ошибка. ${error.message}\n*Время ответа API*: \`${responseTime.toFixed(2)} мс\`\n*Статус аппарата*: \`${status}\``;
+
+  if (error.response) {
+    errorMessage = `
 *Статус аппарата*: \`${status}\`
 *Статус код*: \`${error.response.status}\`
+*Время ответа API*: \`${responseTime.toFixed(2)} мс\`
 *Ответ от API*:
 \`\`\`json
 ${JSON.stringify(error.response.data, null, 2)}
 \`\`\`
-      `;
-      await bot.sendMessage(chatId, markdownErrorResponse, { parse_mode: 'Markdown' });
-    } else if (error.request) {
-      await bot.sendMessage(chatId, `Ошибка: запрос был сделан, но ответа не получено\n*Статус аппарата*: \`${status}\``, { parse_mode: 'Markdown' });
-    } else {
-      await bot.sendMessage(chatId, `Ошибка. ${error.message}\n*Статус аппарата*: \`${status}\``, { parse_mode: 'Markdown' });
-    }
+    `;
+  } else if (error.request) {
+    errorMessage = `Ошибка: запрос был сделан, но ответа не получено\n*Время ответа API*: \`${responseTime.toFixed(2)} мс\`\n*Статус аппарата*: \`${status}\``;
   }
-});
 
+  await bot.sendMessage(chatId, errorMessage, { parse_mode: 'Markdown' });
+}
 
 
 // Функция для получения токена от Vendista
@@ -213,79 +247,290 @@ ${JSON.stringify(rebootResponse, null, 2)}
 });
 
 // Запуск проверки удаленной выдачи
-async function sendRequest(): Promise<Response | void> {
-  try {
-    const token = await getAuthToken();
 
-    return await fetch(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
+
+interface LogEntry {
+  date: string;
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  successPercentage: number;
+  averageResponseTime: number;
+  errorDetails: Array<{ timestamp: string; message: string }>;
+}
+
+const logs: LogEntry[] = [];
+let currentLog: LogEntry | null = null;
+
+async function sendRequest(): Promise<{ response: Response | null; responseTime: number; data: any }> {
+  let response: Response | null = null;
+  let responseTime: number;
+  const body = JSON.stringify({
+    number: "1",
+    cup: "0",
+    sugar: "0",
+    discount: "0"
+  });
+  const token = await getAuthToken();
+  const startTime = performance.now();
+  const newDate = new Date().toISOString().split('T')[0];
+
+  // Проверка на смену даты
+  if (!currentLog || currentLog.date !== newDate) {
+    // Архивируем старые логи
+    await archiveOldLogs(currentLog);
+
+    currentLog = {
+      date: newDate,
+      totalRequests: 0,
+      successfulRequests: 0,
+      failedRequests: 0,
+      successPercentage: 0,
+      averageResponseTime: 0,
+      errorDetails: []
+    };
+  }
+
+  try {
+    response = await fetch(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
-      body: JSON.stringify({
-        number: "106",
-        cup: "0",
-        sugar: "0",
-        discount: "0"
-      })
+      body
     });
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error(`Ошибка выполнения запроса: ${error.message}`);
+    const endTime = performance.now();
+    responseTime = endTime - startTime;
+    const data = await response.json(); // Получение данных
+
+    currentLog.totalRequests += 1;
+    if (response.ok) {
+      currentLog.successfulRequests += 1;
     } else {
-      console.error(`Неизвестная ошибка: ${error}`);
+      currentLog.failedRequests += 1;
+      currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: `Error ${response.status}: ${JSON.stringify(data)}` });
+    }
+
+    currentLog.successPercentage = (currentLog.successfulRequests / currentLog.totalRequests) * 100;
+    currentLog.averageResponseTime = ((currentLog.averageResponseTime * (currentLog.totalRequests - 1)) + responseTime) / currentLog.totalRequests;
+
+    return { response, responseTime, data }; // Возвращаем также данные
+  } catch (error) {
+    responseTime = performance.now() - startTime;
+    currentLog.totalRequests += 1;
+    currentLog.failedRequests += 1;
+    currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: error instanceof Error ? error.message : 'Unknown error' });
+    return { response: null, responseTime, data: null }; // Возвращаем null для данных
+  }
+}
+
+// Функция для архивирования старых логов
+async function archiveOldLogs(log: LogEntry | null): Promise<void> {
+  if (log) {
+    const logContent = `
+Дата: ${log.date}
+Всего запросов: ${log.totalRequests}
+Успешных: ${log.successfulRequests}
+Не успешных: ${log.failedRequests}
+Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
+Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
+Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
+- Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
+
+    // Проверка на существование файла и запись в архив
+    if (!fs.existsSync('logs_archive.txt')) {
+      await fs.promises.writeFile('logs_archive.txt', logContent);
+    } else {
+      await fs.promises.appendFile('logs_archive.txt', logContent);
     }
   }
 }
 
 // Обработка ответа
-async function handleResponse(response: Response): Promise<void> {
-  let data;
-  try {
-    data = await response.json();
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error(`Ошибка при обработке ответа: ${error.message}`);
-    } else {
-      console.error(`Неизвестная ошибка: ${error}`);
-    }
-    return; // Если произошла ошибка, выходим из функции
-  }
-
-  // Отправка уведомления в Telegram, если статус не равен 200
-  if (response.status !== 200) {
-    const status: string = await getMachineStatus(); // Предположим, что getMachineStatus() возвращает Promise<string>
-
+async function handleResponse(response: Response, responseTime: number, data: any): Promise<void> {
+  const status: string = await getMachineStatus();
+  if (!response.ok) {
     const message = `
 *Статус аппарата*: \`${status}\`
 *Запрос завершился ошибкой*: ${response.status}
+*Время ответа API*: \`${responseTime.toFixed(2)} мс\` 
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
     `;
-
     await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, message, { parse_mode: 'Markdown' });
   }
 }
 
-// Функция для запуска периодического выполнения запроса
-function startInterval(): void {
-  setInterval(async () => {
-    const response = await sendRequest();
-    if(response) {
-      await handleResponse(response);
-    }
-  }, 2 * 60 * 1000);
+// Функция для записи логов в файл
+async function saveLogsToFile(): Promise<void> {
+  if (currentLog) logs.push(currentLog);
+
+  const latestLog = logs[logs.length - 1]; // Получаем последний лог
+  const logContent = `
+Дата: ${latestLog.date}
+Всего запросов: ${latestLog.totalRequests}
+Успешных: ${latestLog.successfulRequests}
+Не успешных: ${latestLog.failedRequests}
+Процент успешных: ${(latestLog.totalRequests === 0 ? 0 : ((latestLog.successfulRequests / latestLog.totalRequests) * 100).toFixed(2))}%
+Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} мс
+Ошибки: ${latestLog.errorDetails.length ? latestLog.errorDetails.map(err => `
+- Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
+
+  await fs.promises.writeFile('api_log.txt', logContent);
 }
 
-// Запускаем интервал
-startInterval();
+// Функция для проверки и архивирования существующих логов перед запуском
+async function checkAndArchiveExistingLogs(): Promise<void> {
+  if (fs.existsSync('api_log.txt')) {
+    const data = await fs.promises.readFile('api_log.txt', 'utf-8');
+    // Парсинг и сохранение в архив
+    const oldLog: LogEntry = parseLog(data);
+    await archiveOldLogs(oldLog);
+    // Очищаем файл логов
+    await fs.promises.writeFile('api_log.txt', '');
+  }
+}
+
+// Парсинг логов из строки
+function parseLog(logData: string): LogEntry {
+  const lines = logData.split('\n').filter(line => line.trim() !== '');
+  const logEntry: Partial<LogEntry> = {};
+
+  for (const line of lines) {
+    if (line.startsWith('Дата:')) {
+      logEntry.date = line.split(': ')[1];
+    } else if (line.startsWith('Всего запросов:')) {
+      logEntry.totalRequests = parseInt(line.split(': ')[1]);
+    } else if (line.startsWith('Успешных:')) {
+      logEntry.successfulRequests = parseInt(line.split(': ')[1]);
+    } else if (line.startsWith('Не успешных:')) {
+      logEntry.failedRequests = parseInt(line.split(': ')[1]);
+    } else if (line.startsWith('Процент успешных:')) {
+      logEntry.successPercentage = parseFloat(line.split(': ')[1]);
+    } else if (line.startsWith('Среднее время ответа API:')) {
+      logEntry.averageResponseTime = parseFloat(line.split(': ')[1]);
+    } else if (line.startsWith('Ошибки:')) {
+      logEntry.errorDetails = [];
+      const errorLines = lines.slice(lines.indexOf(line) + 1);
+      for (const errorLine of errorLines) {
+        if (errorLine.startsWith('- Время:')) {
+          const timestamp = errorLine.split(', ')[0].split(': ')[1];
+          const message = errorLine.split(', Сообщение: ')[1];
+          logEntry.errorDetails.push({ timestamp, message });
+        }
+      }
+    }
+  }
+
+  return logEntry as LogEntry;
+}
+
+// Функция для запуска периодического выполнения запроса
+async function startInterval(): Promise<void> {
+  // Проверяем и архивируем существующие логи перед запуском
+  await checkAndArchiveExistingLogs();
+
+  setInterval(async () => {
+    const { response, responseTime, data } = await sendRequest(); // Получаем данные
+
+    if (response) {
+      await handleResponse(response, responseTime, data); // Передаем данные
+    }
+    await saveLogsToFile();
+  }, 20 * 1000);
+}
+
+startInterval().catch(error => {
+  console.error('Error starting interval:', error);
+});
+
+//Добавление команды Statistic
+async function getStatistics(): Promise<string> {
+  try {
+    console.log('Чтение файла api_log.txt...');
+    const data = await fs.promises.readFile('api_log.txt', 'utf-8');
+    const lines = data.split('\n');
+
+    console.log('Обработка последних 20 строк...');
+    const last20Lines = lines.slice(-20);
+
+    if (!last20Lines.some(line => line.startsWith('Дата:'))) {
+      console.log('Строки, начинающиеся со "Дата:", не найдены. Поиск дополнительных строк...');
+      let additionalLines = [];
+      let index = lines.length - 21;
+
+      while (additionalLines.length < 20 && index >= 0) {
+        if (lines[index].startsWith('Дата:')) {
+          additionalLines.push(lines[index]);
+        }
+        additionalLines.push(lines[index]);
+        index--;
+      }
+
+      const results = additionalLines.slice(-20).reverse();
+      console.log('Возвращение данных: ', results.join('\n'));
+      return results.join('\n');
+    }
+
+    console.log('Возвращение последних 20 строк...');
+    return last20Lines.join('\n');
+  } catch (error) {
+    console.error('Ошибка при получении статистики: ', error);
+    return 'Произошла ошибка при получении статистики.';
+  }
+}
+
+bot.onText(/\/statistic/, async (msg) => {
+  const chatId = msg.chat.id;
+  console.log(`Запрос статистики от пользователя ${chatId}...`);
+
+  const statistics = await getStatistics();
+
+  if (statistics.trim() === '') {
+    console.log('Статистика пустая. Ничего не отправляем.');
+    await bot.sendMessage(chatId, 'Нет данных для отображения статистики.');
+  } else {
+    await bot.sendMessage(chatId, statistics);
+    console.log(`Статистика отправлена пользователю ${chatId}`);
+  }
+});
+
+// Добавление кнопки getfile
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+bot.onText(/\/getfile/, async (msg) => {
+  const chatId = msg.chat.id;
+  console.log('Получена команда /getfile');
+  const filePath = path.join(__dirname, 'logs_archive.txt');
+
+  console.log('Проверяем существование файла:', filePath);
+
+  if (fs.existsSync(filePath)) {
+    console.log('Файл найден, начинаем отправку...');
+    try {
+      await bot.sendDocument(chatId, fs.createReadStream(filePath));
+      console.log('Файл успешно отправлен');
+    } catch (err) {
+      console.error('Ошибка при отправке файла:', err);
+    }
+  } else {
+    console.log('Файл не найден, отправляем сообщение об этом.');
+    try {
+      await bot.sendMessage(chatId, 'Файл не найден.');
+    } catch (err) {
+      console.error('Ошибка при отправке сообщения:', err);
+    }
+  }
+});
+
 
 // Запуск бота
 bot.on('polling_error', (error) => {
   console.log(error);  // Вывод ошибок
 });
+
 
 
 
