@@ -124,7 +124,7 @@ bot.onText(/\/check/, async (msg) => {
     const response = await axios.post(
         `https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`,
         {
-          number: "1",
+          number: "106",
           cup: "0",
           sugar: "0",
           discount: "0"
@@ -246,6 +246,50 @@ ${JSON.stringify(rebootResponse, null, 2)}
   }
 });
 
+// Функция для отправки команды проверки апи вендисты на удаленную выдачу.
+async function sendCheckApiCommand(token: string): Promise<any> {
+  try {
+    const response = await axios.post(
+        `https://api.vendista.ru:99/terminals/${process.env.VENDISTA_ID}/commands/?token=${token}`,
+        {
+          command_id: "40"
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}` // Используем Bearer токен для авторизации
+          }
+        }
+    );
+
+    return response.data;
+  } catch (error: any) {
+    throw new Error(`Ошибка выполнения команды проверки API: ${error.message}`);
+  }
+}
+
+// Обработчик для команды /apivendistachk
+bot.onText(/\/apivendistachk/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  try {
+    const vendistaToken = await getVendistaToken();
+    const checkApiResponse = await sendCheckApiCommand(vendistaToken);
+
+    const markdownResponse = `
+Команда проверки API отправлена успешно.
+Ответ от API:
+\`\`\`json
+${JSON.stringify(checkApiResponse, null, 2)}
+\`\`\`
+    `;
+
+    await bot.sendMessage(chatId, markdownResponse, { parse_mode: 'Markdown' });
+  } catch (error: any) {
+    await bot.sendMessage(chatId, `Ошибка при отправке команды проверки API: ${error.message}`, { parse_mode: 'Markdown' });
+  }
+});
+
+
 // Запуск проверки удаленной выдачи
 
 
@@ -266,7 +310,7 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
   let response: Response | null = null;
   let responseTime: number;
   const body = JSON.stringify({
-    number: "1",
+    number: "106",
     cup: "0",
     sugar: "0",
     discount: "0"
@@ -354,21 +398,56 @@ async function archiveOldLogs(log: LogEntry | null): Promise<void> {
   }
 }
 
-// Обработка ответа
+let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
+let lastErrorCode: number | null = null; // Переменная для хранения последнего кода ошибки
+
 async function handleResponse(response: Response, responseTime: number, data: any): Promise<void> {
-  const status: string = await getMachineStatus();
-  if (!response.ok) {
-    const message = `
-*Статус аппарата*: \`${status}\`
-*Запрос завершился ошибкой*: ${response.status}
-*Время ответа API*: \`${responseTime.toFixed(2)} мс\` 
+  const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
+
+  if (errorCode) {
+    // Если возникла ошибка и уведомление еще не отправлено
+    if (!isErrorNotified || lastErrorCode !== errorCode) {
+      const message =
+          `*Ошибка! ⛔️ 
+Статус код:       ${errorCode}
+Время ответа API:* \`${responseTime.toFixed(2)} мс\`
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
-    `;
-    await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, message, { parse_mode: 'Markdown' });
+`;
+
+
+      try {
+        await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, message, { parse_mode: 'Markdown' });
+        console.log('Уведомление об ошибке отправлено успешно.');
+        isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
+        lastErrorCode = errorCode; // Сохраняем код ошибки
+      } catch (error) {
+        console.error('Ошибка при отправке уведомления об ошибке:', error);
+      }
+    }
+  } else {
+    // Если запрос завершился успешно и ошибка была ранее зафиксирована
+    if (isErrorNotified) {
+      const resolvedMessage = `
+*Проблема решена!*        ✅
+*Запрос завершился успешно.*
+*Время ответа API:*       \`${responseTime.toFixed(2)} мс\`
+      `;
+
+      try {
+        await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, resolvedMessage, { parse_mode: 'Markdown' });
+        console.log('Уведомление о решении проблемы отправлено успешно.');
+        isErrorNotified = false; // Сбрасываем флаг, так как проблема решена
+        lastErrorCode = null; // Сбрасываем код ошибки
+      } catch (error) {
+        console.error('Ошибка при отправке уведомления о решении проблемы:', error);
+      }
+    }
   }
 }
+
+
 
 // Функция для записи логов в файл
 async function saveLogsToFile(): Promise<void> {
@@ -446,7 +525,7 @@ async function startInterval(): Promise<void> {
       await handleResponse(response, responseTime, data); // Передаем данные
     }
     await saveLogsToFile();
-  }, 20 * 1000);
+  }, 2 * 60 * 1000);
 }
 
 startInterval().catch(error => {

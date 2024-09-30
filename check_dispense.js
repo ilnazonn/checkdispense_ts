@@ -109,7 +109,7 @@ bot.onText(/\/check/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
         const token = yield getAuthToken();
         startTime = performance.now(); // Начинаем отсчет времени перед отправкой запроса
         const response = yield axios.post(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
-            number: "1",
+            number: "106",
             cup: "0",
             sugar: "0",
             discount: "0"
@@ -216,6 +216,43 @@ ${JSON.stringify(rebootResponse, null, 2)}
         yield bot.sendMessage(chatId, `Ошибка при отправке команды перезагрузки: ${error.message}`, { parse_mode: 'Markdown' });
     }
 }));
+// Функция для отправки команды проверки апи вендисты на удаленную выдачу.
+function sendCheckApiCommand(token) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const response = yield axios.post(`https://api.vendista.ru:99/terminals/${process.env.VENDISTA_ID}/commands/?token=${token}`, {
+                command_id: "40"
+            }, {
+                headers: {
+                    Authorization: `Bearer ${token}` // Используем Bearer токен для авторизации
+                }
+            });
+            return response.data;
+        }
+        catch (error) {
+            throw new Error(`Ошибка выполнения команды проверки API: ${error.message}`);
+        }
+    });
+}
+// Обработчик для команды /apivendistachk
+bot.onText(/\/apivendistachk/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
+    const chatId = msg.chat.id;
+    try {
+        const vendistaToken = yield getVendistaToken();
+        const checkApiResponse = yield sendCheckApiCommand(vendistaToken);
+        const markdownResponse = `
+Команда проверки API отправлена успешно.
+Ответ от API:
+\`\`\`json
+${JSON.stringify(checkApiResponse, null, 2)}
+\`\`\`
+    `;
+        yield bot.sendMessage(chatId, markdownResponse, { parse_mode: 'Markdown' });
+    }
+    catch (error) {
+        yield bot.sendMessage(chatId, `Ошибка при отправке команды проверки API: ${error.message}`, { parse_mode: 'Markdown' });
+    }
+}));
 const logs = [];
 let currentLog = null;
 function sendRequest() {
@@ -223,7 +260,7 @@ function sendRequest() {
         let response = null;
         let responseTime;
         const body = JSON.stringify({
-            number: "1",
+            number: "106",
             cup: "0",
             sugar: "0",
             discount: "0"
@@ -309,20 +346,50 @@ function archiveOldLogs(log) {
         }
     });
 }
-// Обработка ответа
+let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
+let lastErrorCode = null; // Переменная для хранения последнего кода ошибки
 function handleResponse(response, responseTime, data) {
     return __awaiter(this, void 0, void 0, function* () {
-        const status = yield getMachineStatus();
-        if (!response.ok) {
-            const message = `
-*Статус аппарата*: \`${status}\`
-*Запрос завершился ошибкой*: ${response.status}
-*Время ответа API*: \`${responseTime.toFixed(2)} мс\` 
+        const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
+        if (errorCode) {
+            // Если возникла ошибка и уведомление еще не отправлено
+            if (!isErrorNotified || lastErrorCode !== errorCode) {
+                const message = `*Ошибка! ⛔️ 
+Статус код:       ${errorCode}
+Время ответа API:* \`${responseTime.toFixed(2)} мс\`
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
-    `;
-            yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
+`;
+                try {
+                    yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
+                    console.log('Уведомление об ошибке отправлено успешно.');
+                    isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
+                    lastErrorCode = errorCode; // Сохраняем код ошибки
+                }
+                catch (error) {
+                    console.error('Ошибка при отправке уведомления об ошибке:', error);
+                }
+            }
+        }
+        else {
+            // Если запрос завершился успешно и ошибка была ранее зафиксирована
+            if (isErrorNotified) {
+                const resolvedMessage = `
+*Проблема решена!*        ✅
+*Запрос завершился успешно.*
+*Время ответа API:*       \`${responseTime.toFixed(2)} мс\`
+      `;
+                try {
+                    yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, resolvedMessage, { parse_mode: 'Markdown' });
+                    console.log('Уведомление о решении проблемы отправлено успешно.');
+                    isErrorNotified = false; // Сбрасываем флаг, так как проблема решена
+                    lastErrorCode = null; // Сбрасываем код ошибки
+                }
+                catch (error) {
+                    console.error('Ошибка при отправке уведомления о решении проблемы:', error);
+                }
+            }
         }
     });
 }
@@ -405,7 +472,7 @@ function startInterval() {
                 yield handleResponse(response, responseTime, data); // Передаем данные
             }
             yield saveLogsToFile();
-        }), 20 * 1000);
+        }), 2 * 60 * 1000);
     });
 }
 startInterval().catch(error => {
