@@ -329,12 +329,14 @@ function archiveOldLogs(log) {
       Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
       Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
       - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
+                const filePath = path.join(__dirname, 'logs_archive.txt');
+                console.log('Путь к файлу:', filePath);
                 // Проверка на существование файла и запись в архив
-                if (!fs.existsSync('logs_archive.txt')) {
-                    yield fs.promises.writeFile('logs_archive.txt', logContent);
+                if (!fs.existsSync(filePath)) {
+                    yield fs.promises.writeFile(filePath, logContent);
                 }
                 else {
-                    yield fs.promises.appendFile('logs_archive.txt', logContent);
+                    yield fs.promises.appendFile(filePath, logContent);
                 }
             }
             catch (error) {
@@ -472,7 +474,7 @@ function startInterval() {
                 yield handleResponse(response, responseTime, data); // Передаем данные
             }
             yield saveLogsToFile();
-        }), 2 * 60 * 1000);
+        }), 10 * 1000);
     });
 }
 startInterval().catch(error => {

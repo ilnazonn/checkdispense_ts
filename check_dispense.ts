@@ -384,11 +384,14 @@ async function archiveOldLogs(log: LogEntry | null): Promise<void> {
       Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
       - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
 
+      const filePath = path.join(__dirname, 'logs_archive.txt');
+      console.log('Путь к файлу:', filePath);
+
       // Проверка на существование файла и запись в архив
-      if (!fs.existsSync('logs_archive.txt')) {
-        await fs.promises.writeFile('logs_archive.txt', logContent);
+      if (!fs.existsSync(filePath)) {
+        await fs.promises.writeFile(filePath, logContent);
       } else {
-        await fs.promises.appendFile('logs_archive.txt', logContent);
+        await fs.promises.appendFile(filePath, logContent);
       }
     } catch (error) {
       console.error('Ошибка при архивировании логов:', error);
@@ -397,6 +400,7 @@ async function archiveOldLogs(log: LogEntry | null): Promise<void> {
     console.error('Лог для архивирования не определен или равен null.');
   }
 }
+
 
 let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
 let lastErrorCode: number | null = null; // Переменная для хранения последнего кода ошибки
@@ -525,7 +529,7 @@ async function startInterval(): Promise<void> {
       await handleResponse(response, responseTime, data); // Передаем данные
     }
     await saveLogsToFile();
-  }, 2 * 60 * 1000);
+  }, 10 * 1000);
 }
 
 startInterval().catch(error => {
