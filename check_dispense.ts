@@ -609,6 +609,7 @@ bot.onText(/\/getfile/, async (msg) => {
     console.log('Файл не найден, отправляем сообщение об этом.');
     try {
       await bot.sendMessage(chatId, 'Файл не найден.');
+
     } catch (err) {
       console.error('Ошибка при отправке сообщения:', err);
     }
