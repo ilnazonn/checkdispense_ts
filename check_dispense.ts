@@ -275,10 +275,10 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
   const startTime = performance.now();
   const newDate = new Date().toISOString().split('T')[0];
 
-  // Проверка на смену даты
+// Проверка на смену даты
   if (!currentLog || currentLog.date !== newDate) {
     // Архивируем старые логи
-    await archiveOldLogs(currentLog);
+    await archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до переинициализации currentLog
 
     currentLog = {
       date: newDate,
@@ -290,6 +290,7 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
       errorDetails: []
     };
   }
+
 
   try {
     response = await fetch(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
@@ -328,22 +329,28 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
 // Функция для архивирования старых логов
 async function archiveOldLogs(log: LogEntry | null): Promise<void> {
   if (log) {
-    const logContent = `
-Дата: ${log.date}
-Всего запросов: ${log.totalRequests}
-Успешных: ${log.successfulRequests}
-Не успешных: ${log.failedRequests}
-Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
-Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
-Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
-- Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
+    try {
+      const logContent = `
+      Дата: ${log.date}
+      Всего запросов: ${log.totalRequests}
+      Успешных: ${log.successfulRequests}
+      Не успешных: ${log.failedRequests}
+      Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
+      Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
+      Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
+      - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
 
-    // Проверка на существование файла и запись в архив
-    if (!fs.existsSync('logs_archive.txt')) {
-      await fs.promises.writeFile('logs_archive.txt', logContent);
-    } else {
-      await fs.promises.appendFile('logs_archive.txt', logContent);
+      // Проверка на существование файла и запись в архив
+      if (!fs.existsSync('logs_archive.txt')) {
+        await fs.promises.writeFile('logs_archive.txt', logContent);
+      } else {
+        await fs.promises.appendFile('logs_archive.txt', logContent);
+      }
+    } catch (error) {
+      console.error('Ошибка при архивировании логов:', error);
     }
+  } else {
+    console.error('Лог для архивирования не определен или равен null.');
   }
 }
 

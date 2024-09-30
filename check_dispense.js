@@ -12,6 +12,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 // Загрузить переменные окружения из файла .env
 dotenv.config();
 // Убедитесь, что все необходимые переменные окружения определены
@@ -233,7 +234,7 @@ function sendRequest() {
         // Проверка на смену даты
         if (!currentLog || currentLog.date !== newDate) {
             // Архивируем старые логи
-            yield archiveOldLogs(currentLog);
+            yield archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до переинициализации currentLog
             currentLog = {
                 date: newDate,
                 totalRequests: 0,
@@ -281,22 +282,30 @@ function sendRequest() {
 function archiveOldLogs(log) {
     return __awaiter(this, void 0, void 0, function* () {
         if (log) {
-            const logContent = `
-Дата: ${log.date}
-Всего запросов: ${log.totalRequests}
-Успешных: ${log.successfulRequests}
-Не успешных: ${log.failedRequests}
-Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
-Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
-Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
-- Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
-            // Проверка на существование файла и запись в архив
-            if (!fs.existsSync('logs_archive.txt')) {
-                yield fs.promises.writeFile('logs_archive.txt', logContent);
+            try {
+                const logContent = `
+      Дата: ${log.date}
+      Всего запросов: ${log.totalRequests}
+      Успешных: ${log.successfulRequests}
+      Не успешных: ${log.failedRequests}
+      Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
+      Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
+      Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
+      - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
+                // Проверка на существование файла и запись в архив
+                if (!fs.existsSync('logs_archive.txt')) {
+                    yield fs.promises.writeFile('logs_archive.txt', logContent);
+                }
+                else {
+                    yield fs.promises.appendFile('logs_archive.txt', logContent);
+                }
             }
-            else {
-                yield fs.promises.appendFile('logs_archive.txt', logContent);
+            catch (error) {
+                console.error('Ошибка при архивировании логов:', error);
             }
+        }
+        else {
+            console.error('Лог для архивирования не определен или равен null.');
         }
     });
 }
@@ -449,7 +458,6 @@ bot.onText(/\/statistic/, (msg) => __awaiter(void 0, void 0, void 0, function* (
     }
 }));
 // Добавление кнопки getfile
-import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 bot.onText(/\/getfile/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
