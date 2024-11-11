@@ -1,0 +1,24 @@
+{
+  "name": "checkdispense",
+  "version": "1.0.0",
+  "description": "checkdispensebot",
+  "main": "check_dispense.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node check_dispense.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "ilnazonn",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.5.5",
+    "@types/node-telegram-bot-api": "^0.64.7",
+    "typescript": "^5.6.2"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "node-telegram-bot-api": "^0.66.0"
+  }
+}
