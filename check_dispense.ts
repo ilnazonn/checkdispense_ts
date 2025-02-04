@@ -491,7 +491,7 @@ startInterval().catch(error => {
 });
 
 // Архивирование логов
-const MAX_FILE_SIZE = 5 * 1024; // 5 КБ в байтах
+const MAX_FILE_SIZE = 500 * 1024; // 5 КБ в байтах
 const statsFilePath = 'logs_archive.txt';
 
 function archiveLogIfNeeded(filePath: string) {
