@@ -5,6 +5,9 @@ import dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import zlib from 'zlib';
+
 // Загрузить переменные окружения из файла .env
 dotenv.config();
 
@@ -43,11 +46,23 @@ console.log('TELEGRAM_chat_id:', config.TELEGRAM_CHAT_ID);
 // Создание экземпляра бота
 const bot = new TelegramBot(config.TELEGRAM_TOKEN, { polling: true });
 
+async function notifyProcessStarted() {
+  try {
+    await bot.sendMessage(config.TELEGRAM_CHAT_ID, "Процесс запущен и выполняется.");
+  } catch (error: any) { // Указан тип error как any
+    console.error(`Ошибка при отправке сообщения: ${error.message}`);
+  }
+}
+
+// Вызов функции уведомления
+(async () => {
+  await notifyProcessStarted();
+})();
 
 // Функция для получения авторизационного токена
 async function getAuthToken(): Promise<string> {
   try {
-    const response = await axios.post(`https://api.telemetron.net/auth/`, {
+    const response = await axios.post('https://api.telemetron.net/auth/', {
       grant_type: 'password',
       client_id: process.env.CLIENT_ID,
       client_secret: process.env.CLIENT_SECRET,
@@ -62,7 +77,31 @@ async function getAuthToken(): Promise<string> {
 
     return response.data.access_token;
   } catch (error: any) {
-    throw new Error(`Ошибка авторизации: ${error.response?.data?.error_description || error.message}`);
+    const errorMessage = `Ошибка авторизации: ${error.response?.data?.error_description || error.message}`;
+    console.error(errorMessage);
+
+    // Добавляем отладочные сообщения
+    console.error('Response data:', error.response);
+    console.error('Response status:', error.response?.status);
+
+    // Проверяем на ошибки, требующие перезагрузки
+    if (
+        error.message.includes('Client network socket disconnected') ||
+        error.message.includes('ECONNRESET')
+    ) {
+      exec('pm2 restart check_dispense', (execError: any) => {
+        if (execError) {
+          console.error(`Ошибка при перезапуске: ${execError.message}`);
+          // Отправка сообщения об ошибке, если возникает
+          bot.sendMessage(config.TELEGRAM_CHAT_ID, `Ошибка при перезапуске: ${execError.message}`);
+          return;
+        }
+
+        console.log('Процесс успешно перезапущен.');
+      });
+    }
+
+    throw new Error(errorMessage);
   }
 }
 
@@ -289,6 +328,13 @@ ${JSON.stringify(checkApiResponse, null, 2)}
   }
 });
 
+// Обработка ошибок авторизации
+process.on('uncaughtException', (err) => {
+  if (err.message.includes('Ошибка авторизации: connect ETIMEDOUT')) {
+    console.error('Произошла ошибка авторизации. Приложение будет перезапущено PM2...');
+    process.exit(1); // Завершаем процесс с кодом 1 для указания ошибки
+  }
+});
 
 // Запуск проверки удаленной выдачи
 interface LogEntry {
@@ -367,6 +413,7 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
   }
 }
 
+
 let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
 let lastErrorCode: number | null = null; // Переменная для хранения последнего кода ошибки
 let errorCount = 0;
@@ -389,8 +436,6 @@ async function handleResponse(response: Response, responseTime: number, data: an
 ${JSON.stringify(data, null, 2)}
 \`\`\`
 `;
-
-
       try {
         await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, message, { parse_mode: 'Markdown' });
         console.log('Уведомление об ошибке отправлено успешно.');
@@ -425,10 +470,6 @@ ${JSON.stringify(data, null, 2)}
   }
 }
 
-
-
-
-
 // Функция для запуска периодического выполнения запроса
 async function startInterval(): Promise<void> {
   // Проверяем и архивируем существующие логи перед запуском
@@ -441,12 +482,69 @@ async function startInterval(): Promise<void> {
       await handleResponse(response, responseTime, data); // Передаем данные
     }
     await saveLogsToFile();
+    archiveLogIfNeeded(statsFilePath);
   }, 60 * 1000);
 }
 
 startInterval().catch(error => {
   console.error('Error starting interval:', error);
 });
+
+// Архивирование логов
+const MAX_FILE_SIZE = 5 * 1024; // 5 КБ в байтах
+const statsFilePath = 'logs_archive.txt';
+
+function archiveLogIfNeeded(filePath: string) {
+  // Проверяем, существует ли файл
+  if (!fs.existsSync(filePath)) {
+    console.error(`Файл ${filePath} не существует.`);
+    return;
+  }
+
+  try {
+    const fileStats = fs.statSync(filePath);
+
+    if (fileStats.size > MAX_FILE_SIZE) {
+      const gzip = zlib.createGzip();
+      const source = fs.createReadStream(filePath);
+      const currentDate = new Date().toISOString().split('T')[0]; // Пример формирования текущей даты
+
+      // Архивируем с добавлением текущей даты в имя архива
+      const archiveFilePath = `statistics_${currentDate.replace(/\./g, '-')}.csv.gz`;
+      const destination = fs.createWriteStream(archiveFilePath);
+
+      // Обработка ошибок при чтении исходного файла
+      source.on('error', (err) => {
+        console.error('Ошибка при чтении файла:', err);
+      });
+
+      // Обработка ошибок при записи в архив
+      destination.on('error', (err) => {
+        console.error('Ошибка при записи архива:', err);
+      });
+
+      // Архивируем файл
+      source.pipe(gzip).pipe(destination);
+
+      // Удаляем оригинальный файл после успешного архивирования
+      destination.on('finish', () => {
+        console.log(`Файл успешно архивирован: ${archiveFilePath}`);
+        fs.unlinkSync(filePath);
+        console.log(`Оригинальный файл удален: ${filePath}`);
+
+        // Создаем файл logs_archive.txt
+        const logArchiveFilePath = 'logs_archive.txt';
+        fs.writeFileSync(logArchiveFilePath, `Файл успешно архивирован: ${archiveFilePath}\n`, { flag: 'a' });
+        console.log(`Создан файл: ${logArchiveFilePath}`);
+      });
+    } else {
+      console.log('Размер файла не превышает лимит, архивация не требуется.');
+    }
+  } catch (err) {
+    console.error('Ошибка при обработке файла:', err);
+  }
+}
+
 
 //Добавление команды Statistic
 async function getStatistics(): Promise<string> {
@@ -620,6 +718,49 @@ function parseLog(logData: string): LogEntry {
 
   return logEntry as LogEntry;
 }
+//Перезапуск процесса в pm2
+bot.onText(/\/restart/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  // Отправка сообщения о начале перезапуска
+  await bot.sendMessage(chatId, "Перезагрузка выполнена.");
+
+  // Выполнение команды pm2 для перезапуска процесса
+  exec('pm2 restart check_dispense', (error: any) => {
+    if (error) {
+      console.error(`Ошибка при перезапуске: ${error.message}`);
+      // Отправка сообщения об ошибке, если возникает
+      bot.sendMessage(chatId, `Ошибка при перезапуске: ${error.message}`);
+      return;
+    }
+  });
+});
+// Обработка нажатия кнопки "Статус"
+bot.onText(/status/, (msg) => {
+  const chatId = msg.chat.id;
+
+  exec('pm2 status check_dispense', (error: any, stdout: any, stderr: any) => {
+    if (error) {
+      console.error(`Ошибка получения статуса: ${error.message}`);
+      bot.sendMessage(chatId, `Ошибка при получении статуса: ${error.message}`)
+          .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+      return;
+    }
+
+    if (stderr) {
+      console.error(`stderr: ${stderr}`);
+      bot.sendMessage(chatId, `Ошибка: ${stderr}`)
+          .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+      return;
+    }
+
+    // Форматирование статуса приложения в markdown
+    const formattedOutput = `Статус приложения:\n\`\`\`\n${stdout}\n\`\`\``;
+    bot.sendMessage(chatId, formattedOutput, { parse_mode: 'Markdown' })
+        .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+  });
+});
+
 // Запуск бота
 bot.on('polling_error', (error) => {
   console.log(error);  // Вывод ошибок
