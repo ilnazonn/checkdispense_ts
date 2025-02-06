@@ -2,11 +2,11 @@
   "name": "checkdispense",
   "version": "1.0.0",
   "description": "checkdispensebot",
-  "main": "check_dispense.js",
+  "main": "dist/check_dispense.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node check_dispense.js",
+    "start": "node dist/check_dispense.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "ilnazonn",

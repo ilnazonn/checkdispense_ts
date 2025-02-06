@@ -1,0 +1,141 @@
+import { getAuthToken} from './auth.js';
+import {bot} from "./createBot.js";
+import { getMachineStatus } from './machineStatus.js';
+import { archiveOldLogs } from './archive.js';
+export interface LogEntry {
+    date: string;
+    totalRequests: number;
+    successfulRequests: number;
+    failedRequests: number;
+    successPercentage: number;
+    averageResponseTime: number;
+    errorDetails: Array<{ timestamp: string; message: string }>;
+}
+// Запуск проверки удаленной выдачи
+export const logs: LogEntry[] = [];
+export let currentLog: LogEntry | null = null;
+
+async function sendRequest(): Promise<{ response: Response | null; responseTime: number; data: any }> {
+    let response: Response | null = null;
+    let responseTime: number;
+    const body = JSON.stringify({
+        number: "106",
+        cup: "0",
+        sugar: "0",
+        discount: "0"
+    });
+    const token = await getAuthToken();
+    const startTime = performance.now();
+    const newDate = new Date().toISOString().split('T')[0];
+
+// Проверка на смену даты
+//    console.log("Перед архивированием текущий лог:", currentLog);
+    if (!currentLog || currentLog.date !== newDate) {
+        await archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до переинициализации currentLog
+        // Архивируем старые логи
+        currentLog = {
+            date: newDate,
+            totalRequests: 0,
+            successfulRequests: 0,
+            failedRequests: 0,
+            successPercentage: 0,
+            averageResponseTime: 0,
+            errorDetails: []
+        };
+
+    //    console.log("Измененный текущий лог:", currentLog);
+    }
+
+    try {
+        response = await fetch(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body
+        });
+        const endTime = performance.now();
+        responseTime = endTime - startTime;
+        const data = await response.json(); // Получение данных
+
+        currentLog.totalRequests += 1;
+        if (response.ok) {
+            currentLog.successfulRequests += 1;
+        } else {
+            currentLog.failedRequests += 1;
+            currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: `Error ${response.status}: ${JSON.stringify(data)}` });
+        }
+
+        currentLog.successPercentage = (currentLog.successfulRequests / currentLog.totalRequests) * 100;
+        currentLog.averageResponseTime = ((currentLog.averageResponseTime * (currentLog.totalRequests - 1)) + responseTime) / currentLog.totalRequests;
+
+        return { response, responseTime, data }; // Возвращаем также данные
+    } catch (error) {
+        responseTime = performance.now() - startTime;
+        currentLog.totalRequests += 1;
+        currentLog.failedRequests += 1;
+        currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: error instanceof Error ? error.message : 'Unknown error' });
+        return { response: null, responseTime, data: null }; // Возвращаем null для данных
+    }
+}
+
+
+let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
+let lastErrorCode: number | null = null; // Переменная для хранения последнего кода ошибки
+let errorCount = 0;
+async function handleResponse(response: Response, responseTime: number, data: any): Promise<void> {
+    const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
+
+    if (errorCode) {
+        // Увеличиваем счетчик ошибок
+        errorCount++;
+    //    console.log('Счетчик ошибок сейчас', errorCount);
+        // Если возникла ошибка и уведомление еще не отправлено
+        if ((!isErrorNotified || lastErrorCode !== errorCode) && errorCount === 2) {
+            const machineStatus = await getMachineStatus();
+            const message =
+                `*Ошибка! ⛔️ 
+Статус аппарата:  ${machineStatus}
+Статус код:       ${errorCode}
+Время ответа API:* \`${responseTime.toFixed(2)} мс\`
+\`\`\`json
+${JSON.stringify(data, null, 2)}
+\`\`\`
+`;
+            try {
+                await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, message, { parse_mode: 'Markdown' });
+ //               console.log('Уведомление об ошибке отправлено успешно.');
+ //               console.log('Счетчик ошибок сейчас', errorCount);
+                isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
+                lastErrorCode = errorCode; // Сохраняем код ошибки
+            } catch (error) {
+ //               console.error('Ошибка при отправке уведомления об ошибке:', error);
+            }
+        }
+    } else {
+        // Сбрасываем счетчик ошибок при успешном запросе
+        errorCount = 0;
+    //    console.log('Счетчик ошибок сейчас', errorCount);
+        // Если запрос завершился успешно и ошибка была ранее зафиксирована
+        if (isErrorNotified) {
+            const resolvedMessage = `
+*Проблема решена!*        ✅
+*Запрос завершился успешно.*
+*Время ответа API:*       \`${responseTime.toFixed(2)} мс\`
+      `;
+
+            try {
+                await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, resolvedMessage, { parse_mode: 'Markdown' });
+      //          console.log('Уведомление о решении проблемы отправлено успешно.');
+                isErrorNotified = false; // Сбрасываем флаг, так как проблема решена
+                lastErrorCode = null; // Сбрасываем код ошибки
+            } catch (error) {
+      //          console.error('Ошибка при отправке уведомления о решении проблемы:', error);
+            }
+        }
+    }
+}
+
+export { handleResponse, sendRequest,  };
+
