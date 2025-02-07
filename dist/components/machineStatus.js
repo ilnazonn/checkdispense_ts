@@ -39,4 +39,23 @@ function getMachineStatus() {
         }
     });
 }
-export { getMachineStatus };
+// Функция для получения числового значения состояния
+function getMachineState() {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const response = yield axios.get(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${yield getAuthToken()}`
+                }
+            });
+            return response.data.state; // Возвращаем только состояние
+        }
+        catch (error) {
+            console.error(`Ошибка получения статуса: ${error.message}`);
+            return null; // Возвращаем null в случае ошибки
+        }
+    });
+}
+// Экспорт функций
+export { getMachineStatus, getMachineState };

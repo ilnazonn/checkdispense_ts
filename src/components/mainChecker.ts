@@ -2,6 +2,9 @@ import { getAuthToken} from './auth.js';
 import {bot} from "./createBot.js";
 import { getMachineStatus } from './machineStatus.js';
 import { archiveOldLogs } from './archive.js';
+import { getMachineState } from './machineStatus.js';
+import { sendRebootCommand } from './commands.js';
+import { getVendistaToken} from './auth.js';
 export interface LogEntry {
     date: string;
     totalRequests: number;
@@ -84,6 +87,7 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
 let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
 let lastErrorCode: number | null = null; // Переменная для хранения последнего кода ошибки
 let errorCount = 0;
+let isRebootCommandSent = false;
 async function handleResponse(response: Response, responseTime: number, data: any): Promise<void> {
     const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
 
@@ -94,6 +98,7 @@ async function handleResponse(response: Response, responseTime: number, data: an
         // Если возникла ошибка и уведомление еще не отправлено
         if ((!isErrorNotified || lastErrorCode !== errorCode) && errorCount === 2) {
             const machineStatus = await getMachineStatus();
+            const machineState = await getMachineState()
             const message =
                 `*Ошибка! ⛔️ 
 Статус аппарата:  ${machineStatus}
@@ -109,6 +114,14 @@ ${JSON.stringify(data, null, 2)}
  //               console.log('Счетчик ошибок сейчас', errorCount);
                 isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
                 lastErrorCode = errorCode; // Сохраняем код ошибки
+                // Проверяем статус машины и отправляем команду перезагрузки, если нужно
+                if ((machineState === 2 || machineState === 3) && !isRebootCommandSent) {
+                    const vendistaToken = await getVendistaToken();
+                    await sendRebootCommand(vendistaToken);
+                    await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, 'На терминал отправлена команда перезагрузки.', { parse_mode: 'Markdown' });
+                    isRebootCommandSent = true; // Устанавливаем флаг, что команда перезагрузки отправлена
+                }
+
             } catch (error) {
  //               console.error('Ошибка при отправке уведомления об ошибке:', error);
             }
