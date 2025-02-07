@@ -23,7 +23,7 @@ function startInterval() {
             }
             yield saveLogsToFile();
             archiveLogIfNeeded(statsFilePath);
-        }), 10 * 1000);
+        }), 60 * 1000);
     });
 }
 startInterval().catch(error => {

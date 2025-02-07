@@ -226,4 +226,49 @@ bot.onText(/status/, (msg) => {
             .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
     });
 });
+bot.onText(/\/changeterminal/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
+    const chatId = msg.chat.id;
+    // Отправляем первое сообщение
+    yield bot.sendMessage(chatId, 'Пришлите номер вендисты для замены в файле env');
+    // Ждем следующее сообщение от пользователя
+    bot.once('message', (response) => __awaiter(void 0, void 0, void 0, function* () {
+        const vendorId = response.text ? response.text.trim() : ''; // Убираем лишние пробелы
+        if (!vendorId) {
+            yield bot.sendMessage(chatId, 'Вы отправили пустое значение. Пожалуйста, попробуйте снова.');
+            return;
+        }
+        // Обновляем только VENDISTA_ID в .env файле
+        try {
+            updateEnvFile('VENDISTA_ID', vendorId);
+            yield bot.sendMessage(chatId, `VENDISTA_ID обновлен на ${vendorId} в файле env`);
+        }
+        catch (error) {
+            yield bot.sendMessage(chatId, 'Произошла ошибка при обновлении файла env.');
+            console.error('Ошибка при обновлении .env файла:', error);
+        }
+    }));
+}));
+function updateEnvFile(key, value) {
+    const envFilePath = '.env';
+    // Получаем текущее содержимое .env файла
+    let envContent = fs.readFileSync(envFilePath, 'utf-8');
+    // Разбиваем на строки
+    const lines = envContent.split('\n');
+    // Обрабатываем строки и обновляем значение
+    let keyExists = false;
+    const updatedLines = lines.map(line => {
+        const [currentKey] = line.split('=').map(part => part.trim()); // Используем только currentKey
+        if (currentKey === key) {
+            keyExists = true;
+            return `${key}=${value}`; // Обновляем значение
+        }
+        return line; // Оставляем остальные строки без изменений
+    });
+    // Если ключ не был найден, добавляем его в конец
+    if (!keyExists) {
+        updatedLines.push(`${key}=${value}`); // Добавляем новый ключ
+    }
+    // Записываем обновленный контент в .env файл
+    fs.writeFileSync(envFilePath, updatedLines.join('\n'), 'utf-8');
+}
 export { sendRebootCommand };
