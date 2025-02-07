@@ -31,4 +31,22 @@ async function getMachineStatus(): Promise<string> {
     }
 }
 
-export { getMachineStatus };
+// Функция для получения числового значения состояния
+async function getMachineState(): Promise<number | null> {
+    try {
+        const response = await axios.get(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}`, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await getAuthToken()}`
+            }
+        });
+
+        return response.data.state; // Возвращаем только состояние
+    } catch (error: any) {
+        console.error(`Ошибка получения статуса: ${error.message}`);
+        return null; // Возвращаем null в случае ошибки
+    }
+}
+
+// Экспорт функций
+export { getMachineStatus, getMachineState };

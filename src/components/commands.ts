@@ -249,3 +249,5 @@ bot.onText(/status/, (msg) => {
             .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
     });
 });
+
+export {sendRebootCommand};
