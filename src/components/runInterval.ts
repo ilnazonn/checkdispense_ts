@@ -9,15 +9,20 @@ async function startInterval(): Promise<void> {
     await checkAndArchiveExistingLogs();
 
     setInterval(async () => {
-        const { response, responseTime, data } = await sendRequest(); // Получаем данные
+        try {
+            const { response, responseTime, data } = await sendRequest(); // Получаем данные
 
-        if (response) {
-            await handleResponse(response, responseTime, data); // Передаем данные
+            if (response) {
+                await handleResponse(response, responseTime, data); // Передаем данные
+            }
+            await saveLogsToFile();
+            await archiveLogIfNeeded(statsFilePath);
+        } catch (error) {
+            console.error('Произошла ошибка при выполнении задачи:', error);
         }
-        await saveLogsToFile();
-        archiveLogIfNeeded(statsFilePath);
     }, 60 * 1000);
 }
+
 
 startInterval().catch(error => {
     console.error('Error starting interval:', error);
