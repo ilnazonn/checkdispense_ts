@@ -17,12 +17,17 @@ function startInterval() {
         // Проверяем и архивируем существующие логи перед запуском
         yield checkAndArchiveExistingLogs();
         setInterval(() => __awaiter(this, void 0, void 0, function* () {
-            const { response, responseTime, data } = yield sendRequest(); // Получаем данные
-            if (response) {
-                yield handleResponse(response, responseTime, data); // Передаем данные
+            try {
+                const { response, responseTime, data } = yield sendRequest(); // Получаем данные
+                if (response) {
+                    yield handleResponse(response, responseTime, data); // Передаем данные
+                }
+                yield saveLogsToFile();
+                yield archiveLogIfNeeded(statsFilePath);
             }
-            yield saveLogsToFile();
-            archiveLogIfNeeded(statsFilePath);
+            catch (error) {
+                console.error('Произошла ошибка при выполнении задачи:', error);
+            }
         }), 60 * 1000);
     });
 }
