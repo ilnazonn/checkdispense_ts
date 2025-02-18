@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import { readFileSync } from "fs";
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "Привет! Введите /check для проверки выдачи.")
         .then(() => {
@@ -138,7 +139,8 @@ ${JSON.stringify(checkApiResponse, null, 2)}
 function getStatistics() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const data = yield fs.promises.readFile('../check_dispense/reports/api_log.txt', 'utf-8');
+            const dataPath = path.join(__dirname, '../../reports/api_log.txt');
+            const data = readFileSync(dataPath, 'utf-8');
             const lines = data.split('\n').filter(line => line.trim() !== ''); // Очищаем пустые строки
             // Возвращаем первые 20 строк, объединенные в одну строку
             return lines.slice(0, 20).join('\n'); // Убрали промежуточную переменную
