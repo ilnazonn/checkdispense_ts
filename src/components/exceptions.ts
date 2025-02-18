@@ -23,7 +23,7 @@ process.on('unhandledRejection', (reason, promise) => {
     setTimeout(() => {
         console.log('Завершаем процесс после обработки исключения');
         process.exit(1);
-    }, 1000);
+    }, 300000);
 });
 
 // Обработчик необработанных исключений
@@ -38,5 +38,5 @@ process.on('uncaughtException', (error: Error) => {
     setTimeout(() => {
         console.log('Завершаем процесс после обработки исключения');
         process.exit(1);
-    }, 1000);
+    }, 300000);
 });
