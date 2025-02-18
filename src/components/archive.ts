@@ -6,9 +6,9 @@ import { LogEntry, logs, currentLog } from './mainChecker.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // Архивирование логов
-const MAX_FILE_SIZE = 500 * 1024; // 5 КБ в байтах
+const MAX_FILE_SIZE = 500 * 1024; // 500 КБ
 export const statsFilePath = path.join(__dirname, '../../reports/logs_archive.txt');
-
+const dataPath = path.join(__dirname, '../../reports/api_log.txt');
 async function archiveLogIfNeeded(filePath: string) {
     if (!fs.existsSync(filePath)) {
 //        console.error(`Файл ${filePath} не существует.`);
@@ -99,21 +99,20 @@ async function saveLogsToFile(): Promise<void> {
 Процент успешных: ${(latestLog.totalRequests === 0 ? 0 : ((latestLog.successfulRequests / latestLog.totalRequests) * 100).toFixed(2))}%
 Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} мс
 Ошибки: ${latestLog.errorDetails.length ? latestLog.errorDetails.map(err => `
-- Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
-
-    await fs.promises.writeFile('../check_dispense/reports/api_log.txt', logContent);
+- Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`
+    await fs.promises.writeFile(dataPath, logContent);
 }
 
 // Функция для проверки и архивирования существующих логов перед запуском
 async function checkAndArchiveExistingLogs(): Promise<void> {
     try{
-    if (fs.existsSync('../check_dispense/reports/api_log.txt')) {
-        const data = await fs.promises.readFile('../check_dispense/reports/api_log.txt', 'utf-8');
+    if (fs.existsSync(dataPath)) {
+        const data = await fs.promises.readFile(dataPath, 'utf-8');
         // Парсинг и сохранение в архив
         const oldLog: LogEntry = parseLog(data);
         await archiveOldLogs(oldLog);
         // Очищаем файл логов
-        await fs.promises.writeFile('../check_dispense/reports/api_log.txt', '');
+        await fs.promises.writeFile(dataPath, '');
     }
 } catch (error) {
         console.error('Ошибка при проверке и архивировании логов:', error);

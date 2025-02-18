@@ -15,8 +15,9 @@ import { logs, currentLog } from './mainChecker.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // Архивирование логов
-const MAX_FILE_SIZE = 500 * 1024; // 5 КБ в байтах
+const MAX_FILE_SIZE = 500 * 1024; // 500 КБ
 export const statsFilePath = path.join(__dirname, '../../reports/logs_archive.txt');
+const dataPath = path.join(__dirname, '../../reports/api_log.txt');
 function archiveLogIfNeeded(filePath) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!fs.existsSync(filePath)) {
@@ -110,20 +111,20 @@ function saveLogsToFile() {
 Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} мс
 Ошибки: ${latestLog.errorDetails.length ? latestLog.errorDetails.map(err => `
 - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
-        yield fs.promises.writeFile('../check_dispense/reports/api_log.txt', logContent);
+        yield fs.promises.writeFile(dataPath, logContent);
     });
 }
 // Функция для проверки и архивирования существующих логов перед запуском
 function checkAndArchiveExistingLogs() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            if (fs.existsSync('../check_dispense/reports/api_log.txt')) {
-                const data = yield fs.promises.readFile('../check_dispense/reports/api_log.txt', 'utf-8');
+            if (fs.existsSync(dataPath)) {
+                const data = yield fs.promises.readFile(dataPath, 'utf-8');
                 // Парсинг и сохранение в архив
                 const oldLog = parseLog(data);
                 yield archiveOldLogs(oldLog);
                 // Очищаем файл логов
-                yield fs.promises.writeFile('../check_dispense/reports/api_log.txt', '');
+                yield fs.promises.writeFile(dataPath, '');
             }
         }
         catch (error) {
