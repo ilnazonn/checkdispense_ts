@@ -46,16 +46,16 @@ function archiveLogIfNeeded(filePath) {
                         .on('finish', resolve)
                         .on('error', reject);
                 });
-                //        console.log(`Файл успешно архивирован: ${archiveFilePath}`);
+                console.log(`Файл успешно архивирован: ${archiveFilePath}`);
                 yield fs.promises.unlink(filePath);
-                //        console.log(`Оригинальный файл удален: ${filePath}`);
+                console.log(`Оригинальный файл удален: ${filePath}`);
                 yield fs.promises.writeFile(filePath, '...\n', { flag: 'wx' });
                 const logArchiveFilePath = '../reports/logs_archive.txt';
                 yield fs.promises.appendFile(logArchiveFilePath, `Файл успешно архивирован: ${archiveFilePath}\n`);
-                //        console.log(`Создан файл: ${logArchiveFilePath}`);
+                console.log(`Создан файл: ${logArchiveFilePath}`);
             }
             else {
-                //        console.log('Размер файла не превышает лимит, архивация не требуется.');
+                console.log('Размер файла не превышает лимит, архивация не требуется.');
             }
         }
         catch (err) {
