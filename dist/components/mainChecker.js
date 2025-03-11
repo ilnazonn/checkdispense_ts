@@ -17,6 +17,12 @@ import { getVendistaToken } from './auth.js';
 // Запуск проверки удаленной выдачи
 export const logs = [];
 export let currentLog = null;
+function getMskTimestamp() {
+    const now = new Date();
+    const offsetMs = 3 * 60 * 60 * 1000; // Смещение для MSK (UTC+3)
+    const mskDate = new Date(now.getTime() + offsetMs);
+    return mskDate.toISOString().replace('T', ' ').replace('Z', '');
+}
 function sendRequest() {
     return __awaiter(this, void 0, void 0, function* () {
         let response = null;
@@ -29,12 +35,10 @@ function sendRequest() {
         });
         const token = yield getAuthToken();
         const startTime = performance.now();
-        const newDate = new Date().toISOString().split('T')[0];
+        const newDate = getMskTimestamp().split(' ')[0]; // Получаем только дату без времени
         // Проверка на смену даты
-        //    console.log("Перед архивированием текущий лог:", currentLog);
         if (!currentLog || currentLog.date !== newDate) {
-            yield archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до переинициализации currentLog
-            // Архивируем старые логи
+            yield archiveOldLogs(currentLog);
             currentLog = {
                 date: newDate,
                 totalRequests: 0,
@@ -44,7 +48,6 @@ function sendRequest() {
                 averageResponseTime: 0,
                 errorDetails: []
             };
-            //    console.log("Измененный текущий лог:", currentLog);
         }
         try {
             response = yield fetch(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
@@ -57,40 +60,37 @@ function sendRequest() {
             });
             const endTime = performance.now();
             responseTime = endTime - startTime;
-            const data = yield response.json(); // Получение данных
+            const data = yield response.json();
             currentLog.totalRequests += 1;
             if (response.ok) {
                 currentLog.successfulRequests += 1;
             }
             else {
                 currentLog.failedRequests += 1;
-                currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: `Error ${response.status}: ${JSON.stringify(data)}` });
+                currentLog.errorDetails.push({ timestamp: getMskTimestamp(), message: `Error ${response.status}: ${JSON.stringify(data)}` });
             }
             currentLog.successPercentage = (currentLog.successfulRequests / currentLog.totalRequests) * 100;
             currentLog.averageResponseTime = ((currentLog.averageResponseTime * (currentLog.totalRequests - 1)) + responseTime) / currentLog.totalRequests;
-            return { response, responseTime, data }; // Возвращаем также данные
+            return { response, responseTime, data };
         }
         catch (error) {
             responseTime = performance.now() - startTime;
             currentLog.totalRequests += 1;
             currentLog.failedRequests += 1;
-            currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: error instanceof Error ? error.message : 'Unknown error' });
-            return { response: null, responseTime, data: null }; // Возвращаем null для данных
+            currentLog.errorDetails.push({ timestamp: getMskTimestamp(), message: error instanceof Error ? error.message : 'Unknown error' });
+            return { response: null, responseTime, data: null };
         }
     });
 }
-let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
-let lastErrorCode = null; // Переменная для хранения последнего кода ошибки
+let isErrorNotified = false;
+let lastErrorCode = null;
 let errorCount = 0;
 let isRebootCommandSent = false;
 function handleResponse(response, responseTime, data) {
     return __awaiter(this, void 0, void 0, function* () {
-        const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
+        const errorCode = response.ok ? null : response.status;
         if (errorCode) {
-            // Увеличиваем счетчик ошибок
             errorCount++;
-            //    console.log('Счетчик ошибок сейчас', errorCount);
-            // Если возникла ошибка и уведомление еще не отправлено
             if ((!isErrorNotified || lastErrorCode !== errorCode) && errorCount === 2) {
                 const machineStatus = yield getMachineStatus();
                 const machineState = yield getMachineState();
@@ -104,28 +104,23 @@ ${JSON.stringify(data, null, 2)}
 `;
                 try {
                     yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
-                    //               console.log('Уведомление об ошибке отправлено успешно.');
-                    //               console.log('Счетчик ошибок сейчас', errorCount);
-                    isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
-                    lastErrorCode = errorCode; // Сохраняем код ошибки
-                    // Проверяем статус машины и отправляем команду перезагрузки, если нужно
+                    isErrorNotified = true;
+                    lastErrorCode = errorCode;
                     if ((machineState === 2 || machineState === 3) && !isRebootCommandSent) {
                         const vendistaToken = yield getVendistaToken();
                         yield sendRebootCommand(vendistaToken);
                         yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, 'На терминал отправлена команда перезагрузки.', { parse_mode: 'Markdown' });
-                        isRebootCommandSent = true; // Устанавливаем флаг, что команда перезагрузки отправлена
+                        isRebootCommandSent = true;
                     }
                 }
                 catch (error) {
-                    //               console.error('Ошибка при отправке уведомления об ошибке:', error);
+                    console.error('Ошибка при отправке уведомления об ошибке:', error);
                 }
             }
         }
         else {
-            // Сбрасываем счетчик ошибок при успешном запросе
             errorCount = 0;
-            //    console.log('Счетчик ошибок сейчас', errorCount);
-            // Если запрос завершился успешно и ошибка была ранее зафиксирована
+            isRebootCommandSent = false;
             if (isErrorNotified) {
                 const resolvedMessage = `
 *Проблема решена!*        ✅
@@ -134,15 +129,14 @@ ${JSON.stringify(data, null, 2)}
       `;
                 try {
                     yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, resolvedMessage, { parse_mode: 'Markdown' });
-                    //          console.log('Уведомление о решении проблемы отправлено успешно.');
-                    isErrorNotified = false; // Сбрасываем флаг, так как проблема решена
-                    lastErrorCode = null; // Сбрасываем код ошибки
+                    isErrorNotified = false;
+                    lastErrorCode = null;
                 }
                 catch (error) {
-                    //          console.error('Ошибка при отправке уведомления о решении проблемы:', error);
+                    console.error('Ошибка при отправке уведомления о решении проблемы:', error);
                 }
             }
         }
     });
 }
-export { handleResponse, sendRequest, };
+export { handleResponse, sendRequest };
