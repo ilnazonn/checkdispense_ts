@@ -5,6 +5,7 @@ import { archiveOldLogs } from './archive.js';
 import { getMachineState } from './machineStatus.js';
 import { sendRebootCommand } from './commands.js';
 import { getVendistaToken} from './auth.js';
+
 export interface LogEntry {
     date: string;
     totalRequests: number;
@@ -14,6 +15,7 @@ export interface LogEntry {
     averageResponseTime: number;
     errorDetails: Array<{ timestamp: string; message: string }>;
 }
+
 // Запуск проверки удаленной выдачи
 export const logs: LogEntry[] = [];
 export let currentLog: LogEntry | null = null;
@@ -31,11 +33,9 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
     const startTime = performance.now();
     const newDate = new Date().toISOString().split('T')[0];
 
-// Проверка на смену даты
-//    console.log("Перед архивированием текущий лог:", currentLog);
+    // Проверка на смену даты
     if (!currentLog || currentLog.date !== newDate) {
         await archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до инициализации currentLog
-        //архивируем старые логи
         currentLog = {
             date: newDate,
             totalRequests: 0,
@@ -45,8 +45,6 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
             averageResponseTime: 0,
             errorDetails: []
         };
-
-    //    console.log("Измененный текущий лог:", currentLog);
     }
 
     try {
@@ -67,7 +65,10 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
             currentLog.successfulRequests += 1;
         } else {
             currentLog.failedRequests += 1;
-            currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: `Error ${response.status}: ${JSON.stringify(data)}` });
+            currentLog.errorDetails.push({
+                timestamp: new Date().toLocaleString('ru-RU'), // Конвертируем время в Ru-Ru local
+                message: `Error ${response.status}: ${JSON.stringify(data)}`
+            });
         }
 
         currentLog.successPercentage = (currentLog.successfulRequests / currentLog.totalRequests) * 100;
@@ -78,23 +79,25 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
         responseTime = performance.now() - startTime;
         currentLog.totalRequests += 1;
         currentLog.failedRequests += 1;
-        currentLog.errorDetails.push({ timestamp: new Date().toISOString(), message: error instanceof Error ? error.message : 'Unknown error' });
+        currentLog.errorDetails.push({
+            timestamp: new Date().toLocaleString('ru-RU'), // Конвертируем время в Ru-Ru local
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
         return { response: null, responseTime, data: null }; // Возвращаем null для данных
     }
 }
-
 
 let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
 let lastErrorCode: number | null = null; // Переменная для хранения последнего кода ошибки
 let errorCount = 0;
 let isRebootCommandSent = false;
+
 async function handleResponse(response: Response, responseTime: number, data: any): Promise<void> {
     const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
 
     if (errorCode) {
         // Увеличиваем счетчик ошибок
         errorCount++;
-    //    console.log('Счетчик ошибок сейчас', errorCount);
         // Если возникла ошибка и уведомление еще не отправлено
         if ((!isErrorNotified || lastErrorCode !== errorCode) && errorCount === 2) {
             const machineStatus = await getMachineStatus();
@@ -110,12 +113,10 @@ ${JSON.stringify(data, null, 2)}
 `;
             try {
                 await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, message, { parse_mode: 'Markdown' });
- //               console.log('Уведомление об ошибке отправлено успешно.');
- //               console.log('Счетчик ошибок сейчас', errorCount);
                 isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
                 lastErrorCode = errorCode; // Сохраняем код ошибки
                 // проверяем статус машины и отправляем команду перезагрузки, если нужно
-                if ((machineState === 2 || machineState === 3) && !isRebootCommandSent) {
+                if ((machineState === 2 || machineState === 1) && !isRebootCommandSent) {
                     const vendistaToken = await getVendistaToken();
                     await sendRebootCommand(vendistaToken);
                     await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, 'На терминал отправлена команда перезагрузки.', { parse_mode: 'Markdown' });
@@ -123,14 +124,13 @@ ${JSON.stringify(data, null, 2)}
                 }
 
             } catch (error) {
- //               console.error('Ошибка при отправке уведомления об ошибке:', error);
+                console.error('Ошибка при отправке уведомления об ошибке:', error);
             }
         }
     } else {
         // Сбрасываем счетчик ошибок при успешном запросе
         errorCount = 0;
         isRebootCommandSent = false;
-    //    console.log('Счетчик ошибок сейчас', errorCount);
         // Если запрос завершился успешно и ошибка была ранее зафиксирована
         if (isErrorNotified) {
             const resolvedMessage = `
@@ -141,15 +141,13 @@ ${JSON.stringify(data, null, 2)}
 
             try {
                 await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, resolvedMessage, { parse_mode: 'Markdown' });
-      //          console.log('Уведомление о решении проблемы отправлено успешно.');
                 isErrorNotified = false; // Сбрасываем флаг, так как проблема решена
                 lastErrorCode = null; // Сбрасываем код ошибки
             } catch (error) {
-      //          console.error('Ошибка при отправке уведомления о решении проблемы:', error);
+                console.error('Ошибка при отправке уведомления о решении проблемы:', error);
             }
         }
     }
 }
 
-export { handleResponse, sendRequest,  };
-
+export { handleResponse, sendRequest };
