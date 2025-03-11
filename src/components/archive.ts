@@ -142,9 +142,13 @@ function parseLog(logData: string): LogEntry {
             const errorLines = lines.slice(lines.indexOf(line) + 1);
             for (const errorLine of errorLines) {
                 if (errorLine.startsWith('- Время:')) {
-                    const timestamp = errorLine.split(', ')[0].split(': ')[1];
-                    const message = errorLine.split(', Сообщение: ')[1];
-                    logEntry.errorDetails.push({ timestamp, message });
+                    // Используем регулярное выражение для извлечения времени и сообщения
+                    const match = errorLine.match(/Время: (.+?), Сообщение: (.+)/);
+                    if (match) {
+                        const timestamp = match[1]; // Время
+                        const message = match[2];   // Сообщение
+                        logEntry.errorDetails.push({ timestamp, message });
+                    }
                 }
             }
         }

@@ -191,6 +191,32 @@ bot.onText(/\/getfile/, (msg) => __awaiter(void 0, void 0, void 0, function* () 
         }
     }
 }));
+// Добавление кнопки getfile
+bot.onText(/\/getstatisticfile/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
+    const chatId = msg.chat.id;
+    //    console.log('Получена команда /getstatisticfilefile');
+    const filePath = path.join(__dirname, '../../reports/api_log.txt');
+    //    console.log('Проверяем существование файла:', filePath);
+    if (fs.existsSync(filePath)) {
+        //        console.log('Файл найден, начинаем отправку...');
+        try {
+            yield bot.sendDocument(chatId, fs.createReadStream(filePath));
+            //            console.log('Файл успешно отправлен');
+        }
+        catch (err) {
+            console.error('Ошибка при отправке файла:', err);
+        }
+    }
+    else {
+        //        console.log('Файл не найден, отправляем сообщение об этом.');
+        try {
+            yield bot.sendMessage(chatId, 'Файл не найден.');
+        }
+        catch (err) {
+            console.error('Ошибка при отправке сообщения:', err);
+        }
+    }
+}));
 //Перезапуск процесса в pm2
 bot.onText(/\/restart/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
     const chatId = msg.chat.id;

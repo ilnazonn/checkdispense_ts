@@ -17,12 +17,6 @@ import { getVendistaToken } from './auth.js';
 // Запуск проверки удаленной выдачи
 export const logs = [];
 export let currentLog = null;
-function getMskTimestamp() {
-    const now = new Date();
-    const offsetMs = 3 * 60 * 60 * 1000; // Смещение для MSK (UTC+3)
-    const mskDate = new Date(now.getTime() + offsetMs);
-    return mskDate.toISOString().replace('T', ' ').replace('Z', '');
-}
 function sendRequest() {
     return __awaiter(this, void 0, void 0, function* () {
         let response = null;
@@ -35,10 +29,10 @@ function sendRequest() {
         });
         const token = yield getAuthToken();
         const startTime = performance.now();
-        const newDate = getMskTimestamp().split(' ')[0]; // Получаем только дату без времени
+        const newDate = new Date().toISOString().split('T')[0];
         // Проверка на смену даты
         if (!currentLog || currentLog.date !== newDate) {
-            yield archiveOldLogs(currentLog);
+            yield archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до инициализации currentLog
             currentLog = {
                 date: newDate,
                 totalRequests: 0,
@@ -60,37 +54,45 @@ function sendRequest() {
             });
             const endTime = performance.now();
             responseTime = endTime - startTime;
-            const data = yield response.json();
+            const data = yield response.json(); // Получение данных
             currentLog.totalRequests += 1;
             if (response.ok) {
                 currentLog.successfulRequests += 1;
             }
             else {
                 currentLog.failedRequests += 1;
-                currentLog.errorDetails.push({ timestamp: getMskTimestamp(), message: `Error ${response.status}: ${JSON.stringify(data)}` });
+                currentLog.errorDetails.push({
+                    timestamp: new Date().toLocaleString('ru-RU'), // Конвертируем время в Ru-Ru local
+                    message: `Error ${response.status}: ${JSON.stringify(data)}`
+                });
             }
             currentLog.successPercentage = (currentLog.successfulRequests / currentLog.totalRequests) * 100;
             currentLog.averageResponseTime = ((currentLog.averageResponseTime * (currentLog.totalRequests - 1)) + responseTime) / currentLog.totalRequests;
-            return { response, responseTime, data };
+            return { response, responseTime, data }; // Возвращаем также данные
         }
         catch (error) {
             responseTime = performance.now() - startTime;
             currentLog.totalRequests += 1;
             currentLog.failedRequests += 1;
-            currentLog.errorDetails.push({ timestamp: getMskTimestamp(), message: error instanceof Error ? error.message : 'Unknown error' });
-            return { response: null, responseTime, data: null };
+            currentLog.errorDetails.push({
+                timestamp: new Date().toLocaleString('ru-RU'), // Конвертируем время в Ru-Ru local
+                message: error instanceof Error ? error.message : 'Unknown error'
+            });
+            return { response: null, responseTime, data: null }; // Возвращаем null для данных
         }
     });
 }
-let isErrorNotified = false;
-let lastErrorCode = null;
+let isErrorNotified = false; // Переменная для отслеживания состояния уведомления об ошибке
+let lastErrorCode = null; // Переменная для хранения последнего кода ошибки
 let errorCount = 0;
 let isRebootCommandSent = false;
 function handleResponse(response, responseTime, data) {
     return __awaiter(this, void 0, void 0, function* () {
-        const errorCode = response.ok ? null : response.status;
+        const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
         if (errorCode) {
+            // Увеличиваем счетчик ошибок
             errorCount++;
+            // Если возникла ошибка и уведомление еще не отправлено
             if ((!isErrorNotified || lastErrorCode !== errorCode) && errorCount === 2) {
                 const machineStatus = yield getMachineStatus();
                 const machineState = yield getMachineState();
@@ -104,13 +106,14 @@ ${JSON.stringify(data, null, 2)}
 `;
                 try {
                     yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
-                    isErrorNotified = true;
-                    lastErrorCode = errorCode;
-                    if ((machineState === 2 || machineState === 3) && !isRebootCommandSent) {
+                    isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
+                    lastErrorCode = errorCode; // Сохраняем код ошибки
+                    // проверяем статус машины и отправляем команду перезагрузки, если нужно
+                    if ((machineState === 2 || machineState === 1) && !isRebootCommandSent) {
                         const vendistaToken = yield getVendistaToken();
                         yield sendRebootCommand(vendistaToken);
                         yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, 'На терминал отправлена команда перезагрузки.', { parse_mode: 'Markdown' });
-                        isRebootCommandSent = true;
+                        isRebootCommandSent = true; // Устанавливаем флаг, что команда перезагрузки отправлена
                     }
                 }
                 catch (error) {
@@ -119,8 +122,10 @@ ${JSON.stringify(data, null, 2)}
             }
         }
         else {
+            // Сбрасываем счетчик ошибок при успешном запросе
             errorCount = 0;
             isRebootCommandSent = false;
+            // Если запрос завершился успешно и ошибка была ранее зафиксирована
             if (isErrorNotified) {
                 const resolvedMessage = `
 *Проблема решена!*        ✅
@@ -129,8 +134,8 @@ ${JSON.stringify(data, null, 2)}
       `;
                 try {
                     yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, resolvedMessage, { parse_mode: 'Markdown' });
-                    isErrorNotified = false;
-                    lastErrorCode = null;
+                    isErrorNotified = false; // Сбрасываем флаг, так как проблема решена
+                    lastErrorCode = null; // Сбрасываем код ошибки
                 }
                 catch (error) {
                     console.error('Ошибка при отправке уведомления о решении проблемы:', error);
