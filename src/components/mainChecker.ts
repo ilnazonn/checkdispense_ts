@@ -34,8 +34,8 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
 // Проверка на смену даты
 //    console.log("Перед архивированием текущий лог:", currentLog);
     if (!currentLog || currentLog.date !== newDate) {
-        await archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до переинициализации currentLog
-        // Архивируем старые логи
+        await archiveOldLogs(currentLog); // Убедитесь, что это действие происходит до инициализации currentLog
+        //архивируем старые логи
         currentLog = {
             date: newDate,
             totalRequests: 0,
@@ -114,7 +114,7 @@ ${JSON.stringify(data, null, 2)}
  //               console.log('Счетчик ошибок сейчас', errorCount);
                 isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
                 lastErrorCode = errorCode; // Сохраняем код ошибки
-                // Проверяем статус машины и отправляем команду перезагрузки, если нужно
+                // проверяем статус машины и отправляем команду перезагрузки, если нужно
                 if ((machineState === 2 || machineState === 3) && !isRebootCommandSent) {
                     const vendistaToken = await getVendistaToken();
                     await sendRebootCommand(vendistaToken);
@@ -129,6 +129,7 @@ ${JSON.stringify(data, null, 2)}
     } else {
         // Сбрасываем счетчик ошибок при успешном запросе
         errorCount = 0;
+        isRebootCommandSent = false;
     //    console.log('Счетчик ошибок сейчас', errorCount);
         // Если запрос завершился успешно и ошибка была ранее зафиксирована
         if (isErrorNotified) {
