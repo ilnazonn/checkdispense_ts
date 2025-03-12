@@ -53,7 +53,7 @@ function sendRequest() {
                 body
             });
             const endTime = performance.now();
-            responseTime = endTime - startTime;
+            responseTime = (endTime - startTime) / 1000;
             const data = yield response.json(); // Получение данных
             currentLog.totalRequests += 1;
             if (response.ok) {
@@ -99,7 +99,7 @@ function handleResponse(response, responseTime, data) {
                 const message = `*Ошибка! ⛔️ 
 Статус аппарата:  ${machineStatus}
 Статус код:       ${errorCode}
-Время ответа API:* \`${responseTime.toFixed(2)} мс\`
+Время ответа API:* \`${responseTime.toFixed(2)} секунд\`
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
@@ -130,7 +130,7 @@ ${JSON.stringify(data, null, 2)}
                 const resolvedMessage = `
 *Проблема решена!*        ✅
 *Запрос завершился успешно.*
-*Время ответа API:*       \`${responseTime.toFixed(2)} мс\`
+*Время ответа API:*       \`${responseTime.toFixed(2)} секунд\`
       `;
                 try {
                     yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, resolvedMessage, { parse_mode: 'Markdown' });

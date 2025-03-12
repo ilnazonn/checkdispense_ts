@@ -57,7 +57,7 @@ async function sendRequest(): Promise<{ response: Response | null; responseTime:
             body
         });
         const endTime = performance.now();
-        responseTime = endTime - startTime;
+        responseTime = (endTime - startTime) / 1000;
         const data = await response.json(); // Получение данных
 
         currentLog.totalRequests += 1;
@@ -106,7 +106,7 @@ async function handleResponse(response: Response, responseTime: number, data: an
                 `*Ошибка! ⛔️ 
 Статус аппарата:  ${machineStatus}
 Статус код:       ${errorCode}
-Время ответа API:* \`${responseTime.toFixed(2)} мс\`
+Время ответа API:* \`${responseTime.toFixed(2)} секунд\`
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
 \`\`\`
@@ -136,7 +136,7 @@ ${JSON.stringify(data, null, 2)}
             const resolvedMessage = `
 *Проблема решена!*        ✅
 *Запрос завершился успешно.*
-*Время ответа API:*       \`${responseTime.toFixed(2)} мс\`
+*Время ответа API:*       \`${responseTime.toFixed(2)} секунд\`
       `;
 
             try {

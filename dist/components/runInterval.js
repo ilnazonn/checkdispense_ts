@@ -28,7 +28,7 @@ function startInterval() {
             catch (error) {
                 console.error('Произошла ошибка при выполнении задачи:', error);
             }
-        }), 30 * 1000);
+        }), 60 * 1000);
     });
 }
 startInterval().catch(error => {

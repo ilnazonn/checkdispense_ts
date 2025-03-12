@@ -48,14 +48,14 @@ bot.onText(/\/check/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
             }
         });
         const endTime = performance.now(); // Время после получения ответа
-        responseTime = endTime - startTime; // Рассчитываем время отклика
+        responseTime = (endTime - startTime) / 1000;
         yield sendResponse(chatId, status, response, responseTime);
     }
     catch (error) {
         const unknownError = error;
         // Если произошла ошибка, запоминаем время и обновляем ответ
         const endTime = performance.now(); // Обновляем время отклика
-        responseTime = endTime - startTime; // Рассчитываем время отклика
+        responseTime = (endTime - startTime) / 1000; // Рассчитываем время отклика
         //        console.error('Ошибка при выполнении запроса:', unknownError.message);
         //        console.error('Статус аппарата перед ошибкой:', status);
         yield handleError(chatId, unknownError, status, responseTime);
