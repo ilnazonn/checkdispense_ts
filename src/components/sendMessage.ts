@@ -5,7 +5,7 @@ async function sendResponse(chatId: number, status: string, response: any, respo
     const markdownResponse = `
 *Статус аппарата*: \`${status}\`
 *Статус код*: \`${response.status}\`
-*Время ответа API*: \`${responseTime.toFixed(2)} мс\`
+*Время ответа API*: \`${responseTime.toFixed(2)} секунд\`
 *Ответ от API*:
 \`\`\`json
 ${JSON.stringify(response.data, null, 2)}
@@ -21,7 +21,7 @@ async function handleError(chatId: number, error: AxiosError, status: string, re
         errorMessage = `
 *Статус аппарата*: \`${status}\`
 *Статус код*: \`${error.response.status}\`
-*Время ответа API*: \`${responseTime.toFixed(2)} мс\`
+*Время ответа API*: \`${responseTime.toFixed(2)} секунд\`
 *Ответ от API*:
 \`\`\`json
 ${JSON.stringify(error.response.data, null, 2)}
