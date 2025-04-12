@@ -109,7 +109,7 @@ ${JSON.stringify(data, null, 2)}
                     isErrorNotified = true; // Устанавливаем флаг, что уведомление об ошибке отправлено
                     lastErrorCode = errorCode; // Сохраняем код ошибки
                     // проверяем статус машины и отправляем команду перезагрузки, если нужно
-                    if ((machineState === 2 || machineState === 1) && !isRebootCommandSent) {
+                    if ((machineState === 2 || machineState === 3) && !isRebootCommandSent) {
                         const vendistaToken = yield getVendistaToken();
                         yield sendRebootCommand(vendistaToken);
                         yield bot.sendMessage(process.env.TELEGRAM_CHAT_ID, 'На терминал отправлена команда перезагрузки.', { parse_mode: 'Markdown' });
