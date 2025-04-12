@@ -74,7 +74,7 @@ function archiveOldLogs(log) {
       Успешных: ${log.successfulRequests}
       Не успешных: ${log.failedRequests}
       Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
-      Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
+      Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} секунд
       Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
       - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
                 const filePath = path.join(__dirname, '../../reports/logs_archive.txt');
@@ -108,7 +108,7 @@ function saveLogsToFile() {
 Успешных: ${latestLog.successfulRequests}
 Не успешных: ${latestLog.failedRequests}
 Процент успешных: ${(latestLog.totalRequests === 0 ? 0 : ((latestLog.successfulRequests / latestLog.totalRequests) * 100).toFixed(2))}%
-Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} мс
+Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} секунд
 Ошибки: ${latestLog.errorDetails.length ? latestLog.errorDetails.map(err => `
 - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
         yield fs.promises.writeFile(dataPath, logContent);

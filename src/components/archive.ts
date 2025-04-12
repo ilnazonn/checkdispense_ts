@@ -66,7 +66,7 @@ async function archiveOldLogs(log: LogEntry | null): Promise<void> {
       Успешных: ${log.successfulRequests}
       Не успешных: ${log.failedRequests}
       Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
-      Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} мс
+      Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} секунд
       Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
       - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
 
@@ -97,7 +97,7 @@ async function saveLogsToFile(): Promise<void> {
 Успешных: ${latestLog.successfulRequests}
 Не успешных: ${latestLog.failedRequests}
 Процент успешных: ${(latestLog.totalRequests === 0 ? 0 : ((latestLog.successfulRequests / latestLog.totalRequests) * 100).toFixed(2))}%
-Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} мс
+Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} секунд
 Ошибки: ${latestLog.errorDetails.length ? latestLog.errorDetails.map(err => `
 - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`
     await fs.promises.writeFile(dataPath, logContent);
