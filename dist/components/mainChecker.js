@@ -27,7 +27,6 @@ function sendRequest() {
             sugar: "0",
             discount: "0"
         });
-        const token = yield getAuthToken();
         const startTime = performance.now();
         const newDate = new Date().toISOString().split('T')[0];
         // Проверка на смену даты
@@ -44,6 +43,7 @@ function sendRequest() {
             };
         }
         try {
+            const token = yield getAuthToken();
             response = yield fetch(`https://api.telemetron.net/v2/vending_machines/${process.env.VM_ID}/dispense`, {
                 method: 'POST',
                 headers: {
@@ -71,14 +71,22 @@ function sendRequest() {
             return { response, responseTime, data }; // Возвращаем также данные
         }
         catch (error) {
-            responseTime = performance.now() - startTime;
+            const endTime = performance.now();
+            responseTime = (endTime - startTime) / 1000;
             currentLog.totalRequests += 1;
             currentLog.failedRequests += 1;
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             currentLog.errorDetails.push({
                 timestamp: new Date().toLocaleString('ru-RU'), // Конвертируем время в Ru-Ru local
-                message: error instanceof Error ? error.message : 'Unknown error'
+                message: errorMessage
             });
-            return { response: null, responseTime, data: null }; // Возвращаем null для данных
+            // Возвращаем синтетический ответ 500, чтобы сработала логика уведомлений
+            const syntheticData = { error: errorMessage };
+            const syntheticResponse = new Response(JSON.stringify(syntheticData), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+            });
+            return { response: syntheticResponse, responseTime, data: syntheticData };
         }
     });
 }
