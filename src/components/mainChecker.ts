@@ -103,12 +103,37 @@ let isRebootCommandSent = false;
 
 async function handleResponse(response: Response, responseTime: number, data: any): Promise<void> {
     const errorCode = response.ok ? null : response.status; // Устанавливаем код ошибки, если есть ошибка
+    const previousErrorCode = lastErrorCode;
 
     if (errorCode) {
         // Увеличиваем счетчик ошибок
         errorCount++;
-        // Если возникла ошибка и уведомление еще не отправлено
-        if ((!isErrorNotified || lastErrorCode !== errorCode) && errorCount === 2) {
+
+        // Если код ошибки изменился (например, 500 -> 422) — уведомляем сразу
+        if (previousErrorCode !== null && previousErrorCode !== errorCode) {
+            const machineStatus = await getMachineStatus();
+            const message =
+                `*Статус ошибки изменился* 🔄
+Было:           ${previousErrorCode}
+Стало:          ${errorCode}
+Статус аппарата: ${machineStatus}
+*Время ответа API:* \`${responseTime.toFixed(2)} секунд\`
+\`\`\`json
+${JSON.stringify(data, null, 2)}
+\`\`\`
+`;
+            try {
+                await bot.sendMessage(process.env.TELEGRAM_CHAT_ID!, message, { parse_mode: 'Markdown' });
+                isErrorNotified = true; // остаёмся в состоянии известной проблемы
+                lastErrorCode = errorCode; // фиксируем новый код ошибки
+            } catch (error) {
+                console.error('Ошибка при отправке уведомления об изменении статуса:', error);
+            }
+            return;
+        }
+
+        // Если возникла ошибка и уведомление еще не отправлено — порог срабатывания
+        if (!isErrorNotified && errorCount === 2) {
             const machineStatus = await getMachineStatus();
             const machineState = await getMachineState()
             const message =
@@ -135,7 +160,11 @@ ${JSON.stringify(data, null, 2)}
             } catch (error) {
                 console.error('Ошибка при отправке уведомления об ошибке:', error);
             }
+            return;
         }
+
+        // Обновляем последний виденный код ошибки, даже если уведомление не отправляли
+        lastErrorCode = errorCode;
     } else {
         // Сбрасываем счетчик ошибок при успешном запросе
         errorCount = 0;
