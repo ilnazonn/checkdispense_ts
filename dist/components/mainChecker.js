@@ -14,6 +14,7 @@ import { archiveOldLogs } from './archive.js';
 import { getMachineState } from './machineStatus.js';
 import { sendRebootCommand } from './commands.js';
 import { getVendistaToken } from './auth.js';
+import { appendErrorLog } from './errorsLog.js';
 // Запуск проверки удаленной выдачи
 export const logs = [];
 export let currentLog = null;
@@ -61,9 +62,18 @@ function sendRequest() {
             }
             else {
                 currentLog.failedRequests += 1;
-                currentLog.errorDetails.push({
-                    timestamp: new Date().toLocaleString('ru-RU'), // Конвертируем время в Ru-Ru local
-                    message: `Error ${response.status}: ${JSON.stringify(data)}`
+                const tsRu = new Date().toLocaleString('ru-RU');
+                const msg = `Error ${response.status}: ${JSON.stringify(data)}`;
+                currentLog.errorDetails.push({ timestamp: tsRu, message: msg });
+                if (currentLog.errorDetails.length > 50)
+                    currentLog.errorDetails.shift();
+                yield appendErrorLog({
+                    ts: new Date(),
+                    date: newDate,
+                    source: 'telemetron_dispense',
+                    httpStatus: response.status,
+                    responseTimeS: responseTime,
+                    message: msg,
                 });
             }
             currentLog.successPercentage = (currentLog.successfulRequests / currentLog.totalRequests) * 100;
@@ -76,9 +86,17 @@ function sendRequest() {
             currentLog.totalRequests += 1;
             currentLog.failedRequests += 1;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            currentLog.errorDetails.push({
-                timestamp: new Date().toLocaleString('ru-RU'), // Конвертируем время в Ru-Ru local
-                message: errorMessage
+            const tsRu = new Date().toLocaleString('ru-RU');
+            currentLog.errorDetails.push({ timestamp: tsRu, message: errorMessage });
+            if (currentLog.errorDetails.length > 50)
+                currentLog.errorDetails.shift();
+            yield appendErrorLog({
+                ts: new Date(),
+                date: newDate,
+                source: 'telemetron_dispense',
+                httpStatus: 500,
+                responseTimeS: responseTime,
+                message: errorMessage,
             });
             // Возвращаем синтетический ответ 500, чтобы сработала логика уведомлений
             const syntheticData = { error: errorMessage };

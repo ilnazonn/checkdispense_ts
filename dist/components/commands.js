@@ -17,6 +17,23 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { readFileSync } from "fs";
+bot.onText(/\/help/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
+    const chatId = msg.chat.id;
+    const helpText = `Доступные команды:\n\n` +
+        `/start — приветствие\n` +
+        `/help — справка по командам\n` +
+        `/check — ручная проверка выдачи (Telemetron)\n` +
+        `/reboot — отправить команду перезагрузки терминала (Vendista)\n` +
+        `/apivendistachk — проверить API Vendista (command_id=40)\n` +
+        `/statistic — показать первые строки сводки (reports/api_log.csv)\n` +
+        `/getstatisticfile — скачать сводку (reports/api_log.csv)\n` +
+        `/getfile — скачать архив сводок (reports/logs_archive.csv)\n` +
+        `/geterrorsfile — скачать лог ошибок (reports/errors.csv)\n` +
+        `/restart — перезапуск процесса через pm2 (pm2 restart check_dispense)\n` +
+        `status — статус процесса через pm2 (pm2 describe check_dispense / fallback)\n` +
+        `/changeterminal — изменить VENDISTA_ID в .env\n`;
+    yield bot.sendMessage(chatId, helpText);
+}));
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "Привет! Введите /check для проверки выдачи.")
         .then(() => {
@@ -136,14 +153,73 @@ ${JSON.stringify(checkApiResponse, null, 2)}
     }
 }));
 //Добавление команды Statistic
+function parseCsvLine(line) {
+    const out = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+            if (ch === '"') {
+                const next = line[i + 1];
+                if (next === '"') {
+                    cur += '"';
+                    i++;
+                }
+                else {
+                    inQuotes = false;
+                }
+            }
+            else {
+                cur += ch;
+            }
+        }
+        else {
+            if (ch === ',') {
+                out.push(cur);
+                cur = '';
+            }
+            else if (ch === '"') {
+                inQuotes = true;
+            }
+            else {
+                cur += ch;
+            }
+        }
+    }
+    out.push(cur);
+    return out;
+}
 function getStatistics() {
     return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c, _d, _e, _f, _g;
         try {
-            const dataPath = path.join(__dirname, '../../reports/api_log.txt');
+            const dataPath = path.join(__dirname, '../../reports/api_log.csv');
             const data = readFileSync(dataPath, 'utf-8');
-            const lines = data.split('\n').filter(line => line.trim() !== ''); // Очищаем пустые строки
-            // Возвращаем первые 20 строк, объединенные в одну строку
-            return lines.slice(0, 20).join('\n'); // Убрали промежуточную переменную
+            const lines = data.split('\n').map(l => l.trim()).filter(Boolean);
+            const lastLine = lines.length ? lines[lines.length - 1] : '';
+            if (!lastLine || lastLine.startsWith('Дата,'))
+                return '';
+            // CSV: Дата,Всего запросов,Успешных,Не успешных,Процент успешных,Среднее время ответа,Ошибки
+            const cols = parseCsvLine(lastLine);
+            const rawDate = (_a = cols[0]) !== null && _a !== void 0 ? _a : '';
+            const date = (() => {
+                const m = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                return m ? `${m[3]}.${m[2]}.${m[1]}` : rawDate;
+            })();
+            const total = (_b = cols[1]) !== null && _b !== void 0 ? _b : '';
+            const success = (_c = cols[2]) !== null && _c !== void 0 ? _c : '';
+            const failed = (_d = cols[3]) !== null && _d !== void 0 ? _d : '';
+            const pct = (_e = cols[4]) !== null && _e !== void 0 ? _e : '';
+            const avg = (_f = cols[5]) !== null && _f !== void 0 ? _f : '';
+            const errors = (_g = cols[6]) !== null && _g !== void 0 ? _g : '';
+            return (`Дата: ${date}\n` +
+                `Всего запросов: ${total}\n` +
+                `Успешных: ${success}\n` +
+                `Не успешных: ${failed}\n` +
+                `Процент успешных: ${pct}%\n` +
+                `Среднее время ответа API: ${avg} секунд\n` +
+                `Ошибки: ${errors}`);
         }
         catch (error) {
             return 'Произошла ошибка при получении статистики.';
@@ -169,7 +245,7 @@ const __dirname = path.dirname(__filename);
 bot.onText(/\/getfile/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
     const chatId = msg.chat.id;
     //    console.log('Получена команда /getfile');
-    const filePath = path.join(__dirname, '../../reports/logs_archive.txt');
+    const filePath = path.join(__dirname, '../../reports/logs_archive.csv');
     //    console.log('Проверяем существование файла:', filePath);
     if (fs.existsSync(filePath)) {
         //        console.log('Файл найден, начинаем отправку...');
@@ -195,7 +271,7 @@ bot.onText(/\/getfile/, (msg) => __awaiter(void 0, void 0, void 0, function* () 
 bot.onText(/\/getstatisticfile/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
     const chatId = msg.chat.id;
     //    console.log('Получена команда /getstatisticfilefile');
-    const filePath = path.join(__dirname, '../../reports/api_log.txt');
+    const filePath = path.join(__dirname, '../../reports/api_log.csv');
     //    console.log('Проверяем существование файла:', filePath);
     if (fs.existsSync(filePath)) {
         //        console.log('Файл найден, начинаем отправку...');
@@ -211,6 +287,27 @@ bot.onText(/\/getstatisticfile/, (msg) => __awaiter(void 0, void 0, void 0, func
         //        console.log('Файл не найден, отправляем сообщение об этом.');
         try {
             yield bot.sendMessage(chatId, 'Файл не найден.');
+        }
+        catch (err) {
+            console.error('Ошибка при отправке сообщения:', err);
+        }
+    }
+}));
+// Отправка файла с ошибками (CSV)
+bot.onText(/\/geterrorsfile/, (msg) => __awaiter(void 0, void 0, void 0, function* () {
+    const chatId = msg.chat.id;
+    const filePath = path.join(__dirname, '../../reports/errors.csv');
+    if (fs.existsSync(filePath)) {
+        try {
+            yield bot.sendDocument(chatId, fs.createReadStream(filePath));
+        }
+        catch (err) {
+            console.error('Ошибка при отправке файла ошибок:', err);
+        }
+    }
+    else {
+        try {
+            yield bot.sendMessage(chatId, 'Файл ошибок не найден.');
         }
         catch (err) {
             console.error('Ошибка при отправке сообщения:', err);
@@ -237,9 +334,50 @@ bot.onText(/status/, (msg) => {
     const chatId = msg.chat.id;
     exec('pm2 describe check_dispense', (error, stdout, stderr) => {
         if (error) {
-            console.error(`Ошибка получения статуса: ${error.message}`);
-            bot.sendMessage(chatId, `Ошибка при получении статуса: ${error.message}`)
-                .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+            // Обходной путь: в некоторых версиях pm2 + новых Node `pm2 describe`
+            // падает при форматировании env (ожидают string, получают другой тип).
+            exec('pm2 jlist', (jErr, jStdout, jStderr) => {
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+                if (jErr || jStderr) {
+                    const msgText = `Ошибка при получении статуса: ${error.message}`;
+                    console.error(msgText);
+                    bot.sendMessage(chatId, msgText)
+                        .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+                    return;
+                }
+                try {
+                    const list = JSON.parse(String(jStdout));
+                    const proc = list.find(p => (p === null || p === void 0 ? void 0 : p.name) === 'check_dispense');
+                    if (!proc) {
+                        bot.sendMessage(chatId, 'Процесс check_dispense не найден в PM2.')
+                            .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+                        return;
+                    }
+                    const status = (_b = (_a = proc === null || proc === void 0 ? void 0 : proc.pm2_env) === null || _a === void 0 ? void 0 : _a.status) !== null && _b !== void 0 ? _b : 'unknown';
+                    const restarts = (_d = (_c = proc === null || proc === void 0 ? void 0 : proc.pm2_env) === null || _c === void 0 ? void 0 : _c.restart_time) !== null && _d !== void 0 ? _d : 'unknown';
+                    const uptimeMs = ((_e = proc === null || proc === void 0 ? void 0 : proc.pm2_env) === null || _e === void 0 ? void 0 : _e.pm_uptime) ? (Date.now() - Number(proc.pm2_env.pm_uptime)) : null;
+                    const uptimeMin = uptimeMs !== null && Number.isFinite(uptimeMs) ? Math.floor(uptimeMs / 60000) : null;
+                    const memMb = ((_f = proc === null || proc === void 0 ? void 0 : proc.monit) === null || _f === void 0 ? void 0 : _f.memory) ? (Number(proc.monit.memory) / (1024 * 1024)).toFixed(1) : null;
+                    const cpu = (_h = (_g = proc === null || proc === void 0 ? void 0 : proc.monit) === null || _g === void 0 ? void 0 : _g.cpu) !== null && _h !== void 0 ? _h : null;
+                    const formattedOutput = `Статус приложения (PM2):\n` +
+                        `\`\`\`\n` +
+                        `name:      ${proc.name}\n` +
+                        `status:    ${status}\n` +
+                        `restarts:  ${restarts}\n` +
+                        `uptime:    ${uptimeMin === null ? 'unknown' : `${uptimeMin} min`}\n` +
+                        `cpu:       ${cpu === null ? 'unknown' : `${cpu}%`}\n` +
+                        `memory:    ${memMb === null ? 'unknown' : `${memMb} MB`}\n` +
+                        `\`\`\``;
+                    bot.sendMessage(chatId, formattedOutput, { parse_mode: 'Markdown' })
+                        .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+                }
+                catch (parseErr) {
+                    const msgText = `Ошибка при разборе pm2 jlist: ${(_j = parseErr === null || parseErr === void 0 ? void 0 : parseErr.message) !== null && _j !== void 0 ? _j : String(parseErr)}`;
+                    console.error(msgText);
+                    bot.sendMessage(chatId, msgText)
+                        .catch(err => console.error(`Ошибка при отправке сообщения: ${err.message}`));
+                }
+            });
             return;
         }
         if (stderr) {

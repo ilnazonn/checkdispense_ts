@@ -7,7 +7,6 @@ const config = {
     CLIENT_SECRET: process.env.CLIENT_SECRET,
     USERNME: process.env.USERNME,
     PASSWORD: process.env.PASSWORD,
-    BASE_URL: process.env.BASE_URL,
     TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
     VM_ID: process.env.VM_ID,
     VENDISTA_LOGIN: process.env.VENDISTA_LOGIN,
@@ -20,6 +19,5 @@ console.log('clientid:', config.CLIENT_ID);
 console.log('clientsecret:', config.CLIENT_SECRET);
 console.log('username:', config.USERNME);
 console.log('password:', config.PASSWORD);
-console.log('base_url:', config.BASE_URL);
 console.log('TELEGRAM_chat_id:', config.TELEGRAM_CHAT_ID);
 export { config };

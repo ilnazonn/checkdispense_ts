@@ -7,12 +7,107 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // Архивирование логов
 const MAX_FILE_SIZE = 500 * 1024; // 500 КБ
-export const statsFilePath = path.join(__dirname, '../../reports/logs_archive.txt');
-const dataPath = path.join(__dirname, '../../reports/api_log.txt');
+export const statsFilePath = path.join(__dirname, '../../reports/logs_archive.csv');
+const dataPath = path.join(__dirname, '../../reports/api_log.csv');
+
+const CSV_HEADER =
+    'Дата,Всего запросов,Успешных,Не успешных,Процент успешных,Среднее время ответа,Ошибки\n';
+
+function escapeCsvCell(value: string): string {
+    const normalized = value.replace(/\r?\n/g, ' ').trim();
+    const mustQuote = /[",\n]/.test(normalized);
+    const escaped = normalized.replace(/"/g, '""');
+    return mustQuote ? `"${escaped}"` : escaped;
+}
+
+function toDailyCsvRow(log: LogEntry): string {
+    const successPct = log.totalRequests === 0 ? 0 : (log.successfulRequests / log.totalRequests) * 100;
+    const avg = Number.isFinite(log.averageResponseTime) ? log.averageResponseTime : 0;
+
+    const cells = [
+        log.date,
+        String(log.totalRequests),
+        String(log.successfulRequests),
+        String(log.failedRequests),
+        successPct.toFixed(2),
+        avg.toFixed(2),
+        String(log.failedRequests),
+    ];
+
+    return cells.map(c => escapeCsvCell(c)).join(',') + '\n';
+}
+
+function parseCsvLine(line: string): string[] {
+    const out: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+            if (ch === '"') {
+                const next = line[i + 1];
+                if (next === '"') {
+                    cur += '"';
+                    i++;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                cur += ch;
+            }
+        } else {
+            if (ch === ',') {
+                out.push(cur);
+                cur = '';
+            } else if (ch === '"') {
+                inQuotes = true;
+            } else {
+                cur += ch;
+            }
+        }
+    }
+
+    out.push(cur);
+    return out;
+}
+
+function parseDailyCsvRow(rowLine: string): LogEntry {
+    const cols = parseCsvLine(rowLine);
+    const date = cols[0] ?? '';
+    const totalRequests = parseInt(cols[1] ?? '0', 10) || 0;
+    const successfulRequests = parseInt(cols[2] ?? '0', 10) || 0;
+    const failedRequests = parseInt(cols[3] ?? '0', 10) || 0;
+    const successPercentage = parseFloat(cols[4] ?? '0') || 0;
+    const averageResponseTime = parseFloat(cols[5] ?? '0') || 0;
+    const errorDetails: Array<{ timestamp: string; message: string }> = [];
+
+    return {
+        date,
+        totalRequests,
+        successfulRequests,
+        failedRequests,
+        successPercentage,
+        averageResponseTime,
+        errorDetails,
+    };
+}
+
+async function ensureCsvWithHeader(filePath: string): Promise<void> {
+    if (!fs.existsSync(filePath)) {
+        await fs.promises.writeFile(filePath, CSV_HEADER, { flag: 'wx' });
+        return;
+    }
+
+    const stat = fs.statSync(filePath);
+    if (stat.size === 0) {
+        await fs.promises.writeFile(filePath, CSV_HEADER);
+    }
+}
 async function archiveLogIfNeeded(filePath: string) {
     if (!fs.existsSync(filePath)) {
 //        console.error(`Файл ${filePath} не существует.`);
-        await fs.promises.writeFile(filePath, '...\n', { flag: 'wx' });
+        await fs.promises.writeFile(filePath, CSV_HEADER, { flag: 'wx' });
 //        console.log(`Создан новый файл: ${filePath}`);
         return;
     }
@@ -45,8 +140,8 @@ async function archiveLogIfNeeded(filePath: string) {
             console.log(`Файл успешно архивирован: ${archiveFilePath}`);
             await fs.promises.unlink(filePath);
             console.log(`Оригинальный файл удален: ${filePath}`);
-            await fs.promises.writeFile(filePath, '...\n', { flag: 'wx' });
-            const logArchiveFilePath = '../reports/logs_archive.txt';
+            await fs.promises.writeFile(filePath, CSV_HEADER, { flag: 'wx' });
+            const logArchiveFilePath = '../reports/logs_archive.csv';
             await fs.promises.appendFile(logArchiveFilePath, `Файл успешно архивирован: ${archiveFilePath}\n`);
             console.log(`Создан файл: ${logArchiveFilePath}`);
         } else {
@@ -60,25 +155,13 @@ async function archiveLogIfNeeded(filePath: string) {
 async function archiveOldLogs(log: LogEntry | null): Promise<void> {
     if (log) {
         try {
-            const logContent = `
-      Дата: ${log.date}
-      Всего запросов: ${log.totalRequests}
-      Успешных: ${log.successfulRequests}
-      Не успешных: ${log.failedRequests}
-      Процент успешных: ${(log.totalRequests === 0 ? 0 : ((log.successfulRequests / log.totalRequests) * 100).toFixed(2))}%
-      Среднее время ответа API: ${log.averageResponseTime.toFixed(2)} секунд
-      Ошибки: ${log.errorDetails.length ? log.errorDetails.map(err => `
-      - Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`;
-
-            const filePath = path.join(__dirname, '../../reports/logs_archive.txt');
+            const filePath = path.join(__dirname, '../../reports/logs_archive.csv');
+            await ensureCsvWithHeader(filePath);
+            const row = toDailyCsvRow(log);
       //      console.log('Путь к файлу:', filePath);
 
             // Проверка на существование файла и запись в архив
-            if (!fs.existsSync(filePath)) {
-                await fs.promises.writeFile(filePath, logContent);
-            } else {
-                await fs.promises.appendFile(filePath, logContent);
-            }
+            await fs.promises.appendFile(filePath, row);
         } catch (error) {
       //      console.error('Ошибка при архивировании логов:', error);
         }
@@ -91,16 +174,9 @@ async function saveLogsToFile(): Promise<void> {
     if (currentLog) logs.push(currentLog);
 
     const latestLog = logs[logs.length - 1]; // Получаем последний лог
-    const logContent = `
-Дата: ${latestLog.date}
-Всего запросов: ${latestLog.totalRequests}
-Успешных: ${latestLog.successfulRequests}
-Не успешных: ${latestLog.failedRequests}
-Процент успешных: ${(latestLog.totalRequests === 0 ? 0 : ((latestLog.successfulRequests / latestLog.totalRequests) * 100).toFixed(2))}%
-Среднее время ответа API: ${latestLog.averageResponseTime.toFixed(2)} секунд
-Ошибки: ${latestLog.errorDetails.length ? latestLog.errorDetails.map(err => `
-- Время: ${err.timestamp}, Сообщение: ${err.message}`).join('') : 'Нет ошибок'}`
-    await fs.promises.writeFile(dataPath, logContent);
+    await ensureCsvWithHeader(dataPath);
+    const content = CSV_HEADER + toDailyCsvRow(latestLog);
+    await fs.promises.writeFile(dataPath, content);
 }
 
 // Функция для проверки и архивирования существующих логов перед запуском
@@ -108,53 +184,18 @@ async function checkAndArchiveExistingLogs(): Promise<void> {
     try{
     if (fs.existsSync(dataPath)) {
         const data = await fs.promises.readFile(dataPath, 'utf-8');
-        // Парсинг и сохранение в архив
-        const oldLog: LogEntry = parseLog(data);
-        await archiveOldLogs(oldLog);
-        // Очищаем файл логов
-        await fs.promises.writeFile(dataPath, '');
+        const lines = data.split('\n').map(l => l.trim()).filter(Boolean);
+        const lastLine = lines.length ? lines[lines.length - 1] : '';
+        if (lastLine && !lastLine.startsWith('Дата,')) {
+            const oldLog = parseDailyCsvRow(lastLine);
+            await archiveOldLogs(oldLog);
+        }
+        // Очищаем файл логов (оставляем заголовок)
+        await fs.promises.writeFile(dataPath, CSV_HEADER);
     }
 } catch (error) {
         console.error('Ошибка при проверке и архивировании логов:', error);
     }
 }
 
-// Парсинг логов из строки
-function parseLog(logData: string): LogEntry {
-    const lines = logData.split('\n').filter(line => line.trim() !== '');
-    const logEntry: Partial<LogEntry> = {};
-
-    for (const line of lines) {
-        if (line.startsWith('Дата:')) {
-            logEntry.date = line.split(': ')[1];
-        } else if (line.startsWith('Всего запросов:')) {
-            logEntry.totalRequests = parseInt(line.split(': ')[1]);
-        } else if (line.startsWith('Успешных:')) {
-            logEntry.successfulRequests = parseInt(line.split(': ')[1]);
-        } else if (line.startsWith('Не успешных:')) {
-            logEntry.failedRequests = parseInt(line.split(': ')[1]);
-        } else if (line.startsWith('Процент успешных:')) {
-            logEntry.successPercentage = parseFloat(line.split(': ')[1]);
-        } else if (line.startsWith('Среднее время ответа API:')) {
-            logEntry.averageResponseTime = parseFloat(line.split(': ')[1]);
-        } else if (line.startsWith('Ошибки:')) {
-            logEntry.errorDetails = [];
-            const errorLines = lines.slice(lines.indexOf(line) + 1);
-            for (const errorLine of errorLines) {
-                if (errorLine.startsWith('- Время:')) {
-                    // Используем регулярное выражение для извлечения времени и сообщения
-                    const match = errorLine.match(/Время: (.+?), Сообщение: (.+)/);
-                    if (match) {
-                        const timestamp = match[1]; // Время
-                        const message = match[2];   // Сообщение
-                        logEntry.errorDetails.push({ timestamp, message });
-                    }
-                }
-            }
-        }
-    }
-
-    return logEntry as LogEntry;
-}
-
-export { archiveLogIfNeeded, archiveOldLogs,checkAndArchiveExistingLogs, parseLog, saveLogsToFile };
+export { archiveLogIfNeeded, archiveOldLogs, checkAndArchiveExistingLogs, saveLogsToFile };
